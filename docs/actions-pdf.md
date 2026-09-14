@@ -43,3 +43,6 @@ Content-Type: application/json
 - 本次测试只使用程序生成的合成 PDF，没有传输私人 PDF。
 
 官方契约：https://developers.openai.com/api/docs/actions/sending-files
+
+## 文件读取等待（0.3.1）
+准备超过5秒返回HTTP504。若操作系统阻塞文件打开，请先检查本机文件可访问性；不要持续重试同一文件。后台读取未结束前不会启动第二个准备任务，已缓存下载仍可使用。

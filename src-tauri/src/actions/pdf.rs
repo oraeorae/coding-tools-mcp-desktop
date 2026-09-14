@@ -12,7 +12,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore, OwnedSemaphorePermit};
 use uuid::Uuid;
 
 use crate::tools::Workspace;
@@ -63,6 +63,7 @@ struct PdfState {
     workspace: Workspace,
     base_url: String,
     cache: Arc<Mutex<PdfCache>>,
+    read_gate: Arc<Semaphore>,
 }
 
 pub(super) fn router(workspace: Workspace, auth: Arc<AuthConfig>) -> Router {
@@ -81,7 +82,7 @@ pub(super) fn router(workspace: Workspace, auth: Arc<AuthConfig>) -> Router {
             cache.lock().await.prune();
         }
     });
-    let state = PdfState { workspace, base_url, cache };
+    let state = PdfState { workspace, base_url, cache, read_gate: Arc::new(Semaphore::new(1)) };
     let protected = Router::new()
         .route("/actions/return_pdf", post(return_pdf))
         .layer(middleware::from_fn(require_actions_auth))
@@ -113,14 +114,29 @@ fn validate_base_url(raw: &str) -> Result<(), ApiError> {
 
 async fn return_pdf(State(state): State<PdfState>, Json(request): Json<PdfRequest>) -> Result<Response, ApiError> {
     validate_base_url(&state.base_url)?;
-    // Serialize preparation as well as insertion to bound concurrent snapshot memory.
-    let mut cache = state.cache.lock().await;
-    let file = tokio::task::spawn_blocking(move || read_pdf(&state.workspace, &request.path))
-        .await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "PDF preparation failed"))??;
-    let token = cache.insert(file)?;
+    let workspace = state.workspace.clone();
+    let (file, _permit) = prepare_bounded(state.read_gate.clone(), Duration::from_secs(5), move || {
+        read_pdf(&workspace, &request.path)
+    }).await?;
+    let token = state.cache.lock().await.insert(file)?;
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(json!({
         "openaiFileResponse": [format!("{}/action-files/{token}", state.base_url)]
     }))).into_response())
+}
+
+// Keep the concurrency permit inside the worker when HTTP cancellation or timeout
+// drops its join handle. A blocked OS file open cannot be canceled by Tokio.
+async fn prepare_bounded<F>(gate: Arc<Semaphore>, limit: Duration, read: F) -> Result<(PdfFile, OwnedSemaphorePermit), ApiError>
+where F: FnOnce() -> Result<PdfFile, ApiError> + Send + 'static {
+    tokio::time::timeout(limit, async move {
+        let permit = gate.acquire_owned().await
+            .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "PDF preparation unavailable"))?;
+        tokio::task::spawn_blocking(move || {
+            let file = read()?;
+            Ok((file, permit))
+        }).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "PDF preparation failed"))?
+    }).await.map_err(|_| error(StatusCode::GATEWAY_TIMEOUT,
+        "PDF preparation timed out. Check local file access or copy the PDF to an accessible local directory; do not repeatedly retry a blocked file."))?
 }
 
 fn read_pdf(workspace: &Workspace, path: &str) -> Result<PdfFile, ApiError> {
@@ -206,7 +222,8 @@ pub(super) fn openapi_path(api_key: bool) -> Value {
             "415": {"description": "Not a PDF"},
             "422": {"description": "Invalid JSON request"},
             "429": {"description": "Temporary PDF cache full"},
-            "503": {"description": "Configure the Actions public HTTPS URL"}
+            "503": {"description": "Configure the Actions public HTTPS URL"},
+            "504": {"description": "PDF file preparation timed out; check local file access"}
         }
     });
     if api_key { op["security"] = json!([{"bearerAuth": []}]); }

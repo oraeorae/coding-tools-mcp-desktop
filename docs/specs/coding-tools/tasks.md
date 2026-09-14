@@ -26,3 +26,5 @@
 
 ## 验证证据
 Rust 全量及浏览器集成回归、Svelte 检查和生产构建已执行，日志位于父目录 diagnostics/optimization-*。安装阶段在最终报告逐项记录。
+
+- [x] 4. 为PDF准备增加5秒超时及后台读取并发门，测试阻塞后不重复启动读线程，再构建替换0.3.1。证据：diagnostics/installed-app-sample.txt显示File::open阻塞；临时目录620字节真实下载成功。文件：actions/pdf.rs和pdf_tests.rs；需求FR-4/NFR-4；设计：现场验收修正。

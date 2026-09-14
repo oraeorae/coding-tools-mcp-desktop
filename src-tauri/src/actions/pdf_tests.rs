@@ -89,7 +89,7 @@ fn preserves_read_path_boundary() {
 #[tokio::test]
 async fn expired_and_unknown_downloads_are_not_found() {
     let (_dir, workspace) = fixture();
-    let state = PdfState {workspace, base_url: "http://127.0.0.1".into(), cache: Arc::new(Mutex::new(PdfCache::default()))};
+    let state = PdfState {workspace, base_url: "http://127.0.0.1".into(), cache: Arc::new(Mutex::new(PdfCache::default())), read_gate: Arc::new(Semaphore::new(1))};
     state.cache.lock().await.entries.insert("expired".into(), PdfFile {
         bytes: Bytes::from_static(b"%PDF-1.4"), disposition: "attachment".into(), expires: Instant::now(),
     });
@@ -146,4 +146,34 @@ async fn http_auth_file_return_headers_snapshot_and_retry() {
     let missing = client.get(format!("http://127.0.0.1:{port}/action-files/invalid")).send().await.unwrap();
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     task.abort();
+}
+
+
+#[tokio::test]
+async fn timed_out_pdf_worker_holds_its_permit_until_it_really_finishes() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let gate = Arc::new(Semaphore::new(1));
+    let started = Arc::new(AtomicBool::new(false));
+    let signal = started.clone();
+    let (release, blocked) = std::sync::mpsc::channel();
+    let task = tokio::spawn(prepare_bounded(gate.clone(), Duration::from_millis(100), move || {
+        signal.store(true, Ordering::SeqCst);
+        let _ = blocked.recv_timeout(Duration::from_secs(2));
+        Ok(PdfFile { bytes: Bytes::from_static(b"%PDF-"), disposition: "attachment".into(), expires: Instant::now() + TTL })
+    }));
+    let result = task.await.unwrap();
+    assert!(started.load(Ordering::SeqCst));
+    assert_eq!(result.err().unwrap().0, StatusCode::GATEWAY_TIMEOUT);
+    assert_eq!(gate.available_permits(), 0);
+    let second = Arc::new(AtomicBool::new(false));
+    let check = second.clone();
+    let result = prepare_bounded(gate.clone(), Duration::from_millis(20), move || {
+        check.store(true, Ordering::SeqCst);
+        Err(error(StatusCode::BAD_REQUEST, "Should not run"))
+    }).await;
+    assert_eq!(result.err().unwrap().0, StatusCode::GATEWAY_TIMEOUT);
+    assert!(!second.load(Ordering::SeqCst));
+    release.send(()).unwrap();
+    let permit = tokio::time::timeout(Duration::from_secs(1), gate.acquire_owned()).await.unwrap().unwrap();
+    drop(permit);
 }
