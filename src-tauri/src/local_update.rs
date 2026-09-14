@@ -137,7 +137,10 @@ async fn restore(app: AppHandle, data_dir: PathBuf) {
 }
 
 pub fn schedule_restore(app: AppHandle) {
-    let Ok(data_dir) = app.path().app_data_dir() else {
+    let Ok(data_dir) = crate::platform::platform()
+        .app_config_dir()
+        .map(|path| path.join("data"))
+    else {
         return;
     };
     tauri::async_runtime::spawn(async move {
