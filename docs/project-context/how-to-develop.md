@@ -94,6 +94,24 @@ pnpm dev
 
 macOS GitHub Actions 仍仅允许在用户明确要求后通过 `workflow_dispatch` 手动触发，不因版本提交自动触发。
 
+## 本地 macOS 一键升级
+
+完成版本递增、测试和提交后，在仓库根目录执行：
+
+```bash
+npm run install:local
+```
+
+该命令以当前本地提交为唯一更新来源，自动检查版本与源码状态、运行前端和 Rust 检查、构建并 ad-hoc 签名 App、备份旧应用与配置、替换 `/Applications/Coding Tools MCP.app`，然后重新打开应用并恢复升级前正在运行的 MCP/Actions 服务。
+
+只检查升级条件而不构建或修改本机应用：
+
+```bash
+npm run install:local -- --dry-run
+```
+
+命令默认拒绝存在未提交的已跟踪文件；未跟踪文件不参与构建门禁，也不会被修改。备份保存于应用数据目录的 `update-backups/` 下。
+
 ## Rust 后端开发约定
 
 ### Tauri Command 模式

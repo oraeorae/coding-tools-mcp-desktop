@@ -1,6 +1,6 @@
 {
   "name": "coding-tools-mcp-desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Coding Tools MCP desktop client",
   "type": "module",
   "scripts": {
@@ -14,7 +14,9 @@
     "tauri": "tauri",
     "browser:setup": "npm ci --prefix bridge/browser",
     "browser:start": "node bridge/browser/server.mjs",
-    "test:browser": "npm test --prefix bridge/browser"
+    "test:browser": "npm test --prefix bridge/browser",
+    "install:local": "node scripts/install-local-macos.mjs",
+    "test:local-install": "node --test scripts/install-local-macos.test.mjs"
   },
   "author": "orall",
   "license": "Apache-2.0",

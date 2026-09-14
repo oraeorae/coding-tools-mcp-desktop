@@ -9,6 +9,7 @@ mod data;
 mod error;
 pub mod harness;
 mod health;
+mod local_update;
 mod mcp;
 mod platform;
 mod runtime;
@@ -160,6 +161,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(AppState::new().expect("failed to load app state"));
+            local_update::schedule_restore(app.handle().clone());
             // Recover FRP clients that stay alive while the public proxy dies
             // (common after install/restart network blips).
             tunnel::ensure_frp_health_loop();

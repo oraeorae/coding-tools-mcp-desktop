@@ -110,7 +110,10 @@ async fn stop_mcp_service(state: &AppState, id: &str) -> AppResult<RuntimeStatus
     state.with_runtime(|runtime| Ok(runtime.mcp_status(&profile)))
 }
 
-async fn start_mcp_service(state: &AppState, id: &str) -> AppResult<RuntimeStatusDto> {
+pub(crate) async fn start_mcp_service(
+    state: &AppState,
+    id: &str,
+) -> AppResult<RuntimeStatusDto> {
     validate_start_resources(state, id, WorkspaceService::Mcp)?;
     let profile = profile_by_id(state, id)?;
     ensure_port_available(profile.runtime.local_port, "本地 MCP").await?;
@@ -149,7 +152,10 @@ async fn stop_actions_service(state: &AppState, id: &str) -> AppResult<RuntimeSt
     state.with_runtime(|runtime| Ok(runtime.actions_status(&profile)))
 }
 
-async fn start_actions_service(state: &AppState, id: &str) -> AppResult<RuntimeStatusDto> {
+pub(crate) async fn start_actions_service(
+    state: &AppState,
+    id: &str,
+) -> AppResult<RuntimeStatusDto> {
     validate_start_resources(state, id, WorkspaceService::Actions)?;
     let profile = profile_by_id(state, id)?;
     ensure_port_available(profile.actions.local_port, "本地 Actions").await?;
