@@ -1,6 +1,6 @@
 {
   "name": "coding-tools-mcp-desktop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Coding Tools MCP desktop client",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "browser:start": "node bridge/browser/server.mjs",
     "test:browser": "npm test --prefix bridge/browser"
   },
+  "author": "orall",
   "license": "Apache-2.0",
   "dependencies": {
     "@lucide/svelte": "^0.487.0",
