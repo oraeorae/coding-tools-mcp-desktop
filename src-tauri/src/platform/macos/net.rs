@@ -3,6 +3,8 @@ use std::process::Command;
 
 use crate::error::{AppError, AppResult};
 
+const LSOF_PATH: &str = "/usr/sbin/lsof";
+
 #[repr(C)]
 struct ProcBsdInfo {
     pbi_flags: u32,
@@ -44,7 +46,7 @@ extern "C" {
 }
 
 pub fn find_pid_listening_on_port(port: u16) -> AppResult<Option<u32>> {
-    let output = Command::new("lsof")
+    let output = Command::new(LSOF_PATH)
         .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-t"])
         .output()
         .map_err(|err| AppError::Message(format!("lsof failed: {err}")))?;
@@ -59,6 +61,18 @@ pub fn find_pid_listening_on_port(port: u16) -> AppResult<Option<u32>> {
         .parse::<u32>()
         .map_err(|err| AppError::Message(format!("invalid lsof pid output: {err}")))?;
     Ok(Some(pid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn lsof_uses_the_macos_system_path() {
+        assert!(Path::new(LSOF_PATH).is_absolute());
+        assert!(Path::new(LSOF_PATH).exists());
+    }
 }
 
 pub fn parent_pid(pid: u32) -> AppResult<Option<u32>> {

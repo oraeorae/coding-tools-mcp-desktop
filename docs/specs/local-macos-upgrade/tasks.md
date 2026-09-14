@@ -5,7 +5,7 @@
 - 本地 macOS 升级 Node 编排器及测试。
 - `npm run install:local` 命令。
 - 一次性服务接力 Rust 模块及测试。
-- 0.3.4 五处版本同步、验证日志和本规格。
+- 0.3.5 五处版本同步、验证日志和本规格。
 
 ## 任务列表
 
@@ -28,7 +28,7 @@
   - **涉及文件**：`src-tauri/src/local_update.rs` 不超过 250 行；`src-tauri/src/lib.rs`；`src-tauri/src/commands/runtime.rs`。
   - _需求：FR-4、FR-5_｜_设计：数据契约、升级流程_
 
-- [x] 2.3 将应用版本从 0.3.2 同步递增至 0.3.4
+- [x] 2.3 将应用版本从 0.3.2 同步递增至 0.3.5
   - **证据块**：`docs/project-context/how-to-develop.md` 明确安装包功能变更必须同步五处版本源。
   - **涉及文件**：`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`。
   - _需求：FR-2、FR-5_｜_设计：升级流程_
@@ -40,7 +40,7 @@
   - **涉及文件**：测试日志与本规格任务状态。
   - _需求：FR-1 至 FR-5_｜_设计：测试_
 
-- [ ] 3.2 提交源码后执行真实 `npm run install:local` 并核对 0.3.4、签名、配置与服务恢复
+- [ ] 3.2 提交源码后执行真实 `npm run install:local` 并核对 0.3.5、签名、配置与服务恢复
   - **证据块**：项目构建规则要求从已提交版本构建；当前安装版为 0.3.2。
   - **涉及文件**：本地构建产物、应用数据下非敏感恢复结果、备份目录。
   - _需求：FR-3、FR-4、FR-5_｜_设计：升级流程、安全与回滚_
@@ -72,4 +72,4 @@
 | `src-tauri/src/local_update.rs` | 新建 | 250 | 服务接力消费 |
 | `src-tauri/src/lib.rs` | 修改 | 8 | 注册启动恢复任务 |
 | `src-tauri/src/commands/runtime.rs` | 修改 | 2 | 复用服务启动函数 |
-| 五处版本源 | 修改 | 10 | 0.3.4 同步 |
+| 五处版本源 | 修改 | 10 | 0.3.5 同步 |
