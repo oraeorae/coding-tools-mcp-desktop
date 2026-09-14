@@ -296,6 +296,7 @@ async fn run_command(
         session.refresh_status().await;
         if session.has_exited() {
             session.wait_for_readers().await;
+            ctx.sessions.persist(&session);
             let snapshot = session.snapshot(max_output);
             ctx.sessions.remove(&session.session_id);
             return Ok(merge_exec_result(snapshot, start, cmd, cwd, false));
@@ -305,6 +306,7 @@ async fn run_command(
             session.kill_and_wait().await;
             session.refresh_status().await;
             session.wait_for_readers().await;
+            ctx.sessions.persist(&session);
             let snapshot = session.snapshot(max_output);
             // Snapshot is embedded; schedule eviction so abandoned timeouts do not linger.
             schedule_session_eviction(ctx.sessions.clone(), session.session_id.clone());
@@ -339,16 +341,21 @@ fn spawn_timeout_monitor(
     deadline: Instant,
 ) {
     tauri::async_runtime::spawn(async move {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        tokio::time::sleep(remaining).await;
-        session.refresh_status().await;
+        loop {
+            session.refresh_status().await;
+            if session.has_exited() || Instant::now() >= deadline { break; }
+            sessions.persist(&session);
+            tokio::time::sleep(Duration::from_millis(500).min(deadline.saturating_duration_since(Instant::now()))).await;
+        }
         if !session.has_exited() {
             session.mark_termination_reason("timeout");
             session.kill_and_wait().await;
             session.refresh_status().await;
             session.wait_for_readers().await;
         }
-        // Keep the session briefly so clients can still read_output / probe status.
+        session.wait_for_readers().await;
+        sessions.persist(&session);
+        // Evict memory later; the bounded archive remains readable.
         schedule_session_eviction(sessions, session.session_id.clone());
     });
 }
@@ -571,6 +578,12 @@ fn resolve_program(
                     retryable: true,
                 })?;
         if !resolved.starts_with(&canonical_workspace) {
+            // External executables require an exact canonical path registered
+            // in local configuration. A basename or a symlink registration is
+            // insufficient, so retargeting a symlink cannot extend the grant.
+            if policy.allowed_commands.contains(resolved.to_string_lossy().as_ref()) {
+                return Ok(resolved.to_string_lossy().into_owned());
+            }
             return Err(WorkspaceError::Tool {
                 code: "EXECUTABLE_OUTSIDE_WORKSPACE",
                 message: format!("Workspace 外可执行文件被拒绝: {trimmed}"),

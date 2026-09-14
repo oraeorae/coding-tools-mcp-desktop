@@ -325,8 +325,20 @@ impl Harness {
     }
 
     pub fn status(&self) -> HarnessResult<HarnessStatus> {
-        let current = capture_baseline(&self.workspace_root);
         let task = self.current_task()?;
+        // Standalone error reporting must not read/hash workspace data. Only an
+        // active task needs a content baseline; Git metadata remains available.
+        let current = if task.is_some() {
+            capture_baseline(&self.workspace_root)
+        } else {
+            ProjectBaseline {
+                branch: git_value(&self.workspace_root, &["rev-parse", "--abbrev-ref", "HEAD"]),
+                head: git_value(&self.workspace_root, &["rev-parse", "HEAD"]),
+                worktree_fingerprint: String::new(),
+                entries: Vec::new(),
+                captured_at: timestamp(),
+            }
+        };
         let (task_id, task_state, task_updated_at, writable, baseline_matches, reason) =
             match task.as_ref() {
                 Some(task) => {

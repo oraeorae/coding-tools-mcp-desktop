@@ -1,3 +1,4 @@
+pub mod browser;
 pub mod context;
 pub mod dispatch;
 pub mod exec;
@@ -9,6 +10,7 @@ pub mod patch;
 pub mod policy;
 pub mod registry;
 pub mod session;
+mod session_archive;
 pub mod workspace;
 
 pub use context::{SharedToolContext, ToolContext};

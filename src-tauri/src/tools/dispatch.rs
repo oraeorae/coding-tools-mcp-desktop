@@ -137,6 +137,8 @@ pub fn call_tool(ctx: &ToolContext, name: &str, args: &Value) -> Value {
         "git_show" => git::git_show(ws, &effective_args),
         "git_blame" => git::git_blame(ws, &effective_args),
         "view_image" => image_tool::view_image(ws, &effective_args),
+        "browser_list_tabs" | "browser_read_page" | "browser_screenshot" | "browser_open" =>
+            super::browser::call(ws, name, &effective_args),
         "request_permissions" => {
             if ctx.policy.skip_permission_gates() {
                 Ok(tool_ok(json!({

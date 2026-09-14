@@ -466,7 +466,7 @@ pub fn wrap_tool_result(structured: Value) -> Value {
 
 pub fn wrap_mcp_tool_result(tool_name: &str, args: &Value, structured: Value) -> Value {
     let is_error = structured.get("ok").and_then(Value::as_bool) == Some(false);
-    let content = if tool_name == "view_image"
+    let content = if matches!(tool_name, "view_image" | "browser_screenshot")
         && args
             .get("output")
             .and_then(Value::as_str)

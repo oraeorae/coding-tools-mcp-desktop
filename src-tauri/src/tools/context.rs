@@ -63,6 +63,7 @@ impl ToolContext {
         harness_root: PathBuf,
     ) -> Self {
         let root = workspace.root().to_path_buf();
+        let sessions = SessionStore::shared(&harness_root, &root);
         Self {
             workspace,
             auth,
@@ -71,7 +72,7 @@ impl ToolContext {
             permission_mode,
             harness: Harness::new(root.clone(), harness_root).expect("无法初始化 Harness"),
             default_cwd: Mutex::new(root),
-            sessions: Arc::new(SessionStore::new()),
+            sessions,
         }
     }
 

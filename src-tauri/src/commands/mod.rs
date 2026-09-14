@@ -1,3 +1,5 @@
+mod browser;
+pub use browser::{browser_status, start_browser_bridge, stop_browser_bridge};
 mod app_info;
 mod frp_profiles;
 mod health;

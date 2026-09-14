@@ -181,6 +181,8 @@ async fn serve(
         write_lock: Arc::new(Mutex::new(())),
     };
 
+    let pdf_routes = super::pdf::router(state.ctx.workspace.clone(), auth.clone());
+
     let protected = Router::new()
         .route("/actions/{tool_name}", post(execute_action))
         .layer(middleware::from_fn(require_actions_auth))
@@ -198,6 +200,7 @@ async fn serve(
         .route("/oauth/token", post(oauth_token_post))
         .merge(protected)
         .with_state(state)
+        .merge(pdf_routes)
         .layer(CorsLayer::permissive());
 
     append_profile_log(

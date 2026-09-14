@@ -6,6 +6,7 @@
     type ActionsPolicyDraft,
   } from "$lib/components/ActionsPolicyForm.svelte";
   import AuthConfigForm from "$lib/components/AuthConfigForm.svelte";
+  import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import HealthPanel from "$lib/components/HealthPanel.svelte";
   import LogViewer from "$lib/components/LogViewer.svelte";
   import RuntimePolicyForm, {
@@ -589,6 +590,8 @@
     </header>
 
     <div class="page-body">
+      <div class="mt-4"><BrowserPanel workspaceId={profile.id} /></div>
+
       {#if activeService === "mcp"}
         <div class="mt-4 flex flex-col gap-3">
           <ServicePanel

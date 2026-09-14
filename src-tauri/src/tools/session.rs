@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::path::{Path, PathBuf};
+use super::session_archive::{Archive, Record};
 use std::time::Instant;
 
 use tokio::io::AsyncReadExt;
@@ -8,7 +10,10 @@ use tokio::process::{Child, ChildStdin};
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
-use crate::tools::workspace::{tool_ok, WorkspaceError};
+use crate::tools::workspace::WorkspaceError;
+#[path = "session_io.rs"]
+mod io;
+pub use io::{read_output, write_stdin, kill_session};
 use serde_json::{json, Value};
 
 const SESSION_BUFFER_BYTES: usize = 1_048_576;
@@ -16,6 +21,8 @@ const SESSION_BUFFER_BYTES: usize = 1_048_576;
 #[derive(Default)]
 pub struct SessionStore {
     sessions: Mutex<HashMap<String, Arc<ExecSession>>>,
+    archive: Option<Archive>,
+    saved_versions: Mutex<HashMap<String, (usize, usize, bool)>>,
 }
 
 impl SessionStore {
@@ -23,7 +30,43 @@ impl SessionStore {
         Self::default()
     }
 
+    pub fn shared(base: &Path, workspace: &Path) -> Arc<Self> {
+        static STORES: OnceLock<Mutex<HashMap<PathBuf, Weak<SessionStore>>>> = OnceLock::new();
+        let archive = Archive::new(base, workspace);
+        let mut stores = STORES.get_or_init(Default::default).lock().expect("session stores");
+        stores.retain(|_, value| value.strong_count() > 0);
+        if let Some(store) = stores.get(&archive.key()).and_then(Weak::upgrade) { return store; }
+        let store = Arc::new(Self { sessions: Mutex::new(HashMap::new()), archive: Some(archive.clone()), saved_versions: Mutex::new(HashMap::new()) });
+        stores.insert(archive.key(), Arc::downgrade(&store));
+        store
+    }
+
+    pub(crate) fn persist(&self, session: &ExecSession) {
+        if let Some(archive) = &self.archive {
+            let version = (*session.stdout_total.lock().expect("stdout total"), *session.stderr_total.lock().expect("stderr total"), session.has_exited());
+            let mut saved = self.saved_versions.lock().expect("saved versions");
+            if saved.get(&session.session_id) == Some(&version) { return; }
+            match archive.save(session) {
+                Ok(()) => {
+                    saved.insert(session.session_id.clone(), version);
+                    *session.archive_ok.lock().expect("archive state") = Some(true);
+                },
+                Err(error) => {
+                    *session.archive_ok.lock().expect("archive state") = Some(false);
+                    eprintln!("Session archive unavailable: {error}");
+                }
+            }
+        }
+    }
+
+    fn archived(&self, id: &str) -> Result<Record, WorkspaceError> {
+        self.archive.as_ref().and_then(|a| a.read(id).ok()).ok_or_else(|| WorkspaceError::Tool {
+            code: "SESSION_NOT_FOUND", message: format!("Session not found: {id}"), category:"not_found", retryable:false,
+        })
+    }
+
     pub fn insert(&self, session: ExecSession) -> Arc<ExecSession> {
+        self.persist(&session);
         let arc = Arc::new(session);
         self.sessions
             .lock()
@@ -47,15 +90,16 @@ impl SessionStore {
     }
 
     pub fn remove(&self, session_id: &str) {
-        self.sessions
-            .lock()
-            .expect("sessions lock")
-            .remove(session_id);
+        if let Some(session) = self.sessions.lock().expect("sessions lock").remove(session_id) {
+            self.persist(&session);
+            self.saved_versions.lock().expect("saved versions").remove(session_id);
+        }
     }
 }
 
 pub struct ExecSession {
     pub session_id: String,
+    archive_ok: Mutex<Option<bool>>,
     pub(crate) child: AsyncMutex<Child>,
     pub stdin: AsyncMutex<Option<ChildStdin>>,
     stdin_open: Mutex<bool>,
@@ -82,6 +126,7 @@ impl ExecSession {
         let stdin_open = stdin.is_some();
         Self {
             session_id,
+            archive_ok: Mutex::new(None),
             child: AsyncMutex::new(child),
             stdin: AsyncMutex::new(stdin),
             stdin_open: Mutex::new(stdin_open),
@@ -205,12 +250,14 @@ impl ExecSession {
     pub fn retained_stream_bytes(&self, stream: &str) -> (Vec<u8>, usize) {
         match stream {
             "stderr" => {
-                let data = self.stderr.lock().expect("stderr lock").clone();
+                let guard = self.stderr.lock().expect("stderr lock");
+                let data = guard.clone();
                 let total = *self.stderr_total.lock().expect("stderr_total lock");
                 (data, total)
             }
             _ => {
-                let data = self.stdout.lock().expect("stdout lock").clone();
+                let guard = self.stdout.lock().expect("stdout lock");
+                let data = guard.clone();
                 let total = *self.stdout_total.lock().expect("stdout_total lock");
                 (data, total)
             }
@@ -241,6 +288,7 @@ impl ExecSession {
         };
         json!({
             "session_id": self.session_id,
+            "output_persistence_ok": *self.archive_ok.lock().expect("archive state"),
             "interactive": self.interactive,
             "stdin_open": *self.stdin_open.lock().expect("stdin_open lock"),
             "status": status,
@@ -287,224 +335,5 @@ fn truncate_tail(bytes: &[u8], max_bytes: usize) -> Truncated {
     Truncated {
         content: String::from_utf8_lossy(&bytes[bytes.len().saturating_sub(take)..]).into_owned(),
         truncated,
-    }
-}
-
-pub fn read_output(store: &SessionStore, args: &Value) -> Result<Value, WorkspaceError> {
-    let output_ref = args
-        .get("output_ref")
-        .and_then(Value::as_str)
-        .ok_or_else(|| WorkspaceError::invalid_argument("output_ref is required"))?;
-    let parts: Vec<&str> = output_ref.split(':').collect();
-    if parts.len() != 3 || parts[0] != "session" {
-        return Err(WorkspaceError::invalid_argument(
-            "output_ref must look like session:<id>:stdout, session:<id>:stderr, or session:<id>:full",
-        ));
-    }
-    let session_id = parts[1];
-    let ref_stream = parts[2];
-    if ref_stream != "stdout" && ref_stream != "stderr" && ref_stream != "full" {
-        return Err(WorkspaceError::invalid_argument(
-            "output_ref stream must be stdout, stderr, or full",
-        ));
-    }
-    let session = store.get(session_id)?;
-    tauri::async_runtime::block_on(session.refresh_status());
-
-    let requested_stream = args.get("stream").and_then(Value::as_str).unwrap_or("");
-    let stream = if ref_stream == "stdout" || ref_stream == "stderr" {
-        ref_stream
-    } else if requested_stream == "stdout" || requested_stream == "stderr" {
-        requested_stream
-    } else {
-        "stdout"
-    };
-
-    let (data, total_stream_bytes) = session.retained_stream_bytes(stream);
-    let requested_offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let limit = args
-        .get("limit")
-        .and_then(Value::as_u64)
-        .unwrap_or(4096)
-        .clamp(1, 1_048_576) as usize;
-    let buffer_offset = requested_offset.min(data.len());
-    let chunk = &data[buffer_offset..data.len().min(buffer_offset + limit)];
-    let next_offset = if buffer_offset + chunk.len() < total_stream_bytes {
-        Some((buffer_offset + chunk.len()) as u64)
-    } else {
-        None
-    };
-
-    Ok(tool_ok(json!({
-        "output_ref": output_ref,
-        "stream_output_ref": format!("session:{session_id}:{stream}"),
-        "stream": stream,
-        "offset": buffer_offset,
-        "requested_offset": requested_offset,
-        "limit": limit,
-        "content": String::from_utf8_lossy(chunk),
-        "next_offset": next_offset,
-        "total_retained_bytes": data.len(),
-        "total_stream_bytes": total_stream_bytes,
-        "truncated": next_offset.is_some(),
-        "warnings": if ref_stream == "full" {
-            vec!["legacy full output_ref defaults to stdout; use output_refs for stable stream paging"]
-        } else {
-            Vec::<&str>::new()
-        }
-    })))
-}
-
-pub fn write_stdin(store: &SessionStore, args: &Value) -> Result<Value, WorkspaceError> {
-    let session_id = args
-        .get("session_id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| WorkspaceError::invalid_argument("session_id is required"))?;
-    let session = store.get(session_id)?;
-    let chars = args.get("chars").and_then(Value::as_str).unwrap_or("");
-    let max_output_bytes = args
-        .get("max_output_bytes")
-        .and_then(Value::as_u64)
-        .unwrap_or(65_536) as usize;
-
-    let running = tauri::async_runtime::block_on(session.is_running());
-    if !running {
-        if !chars.is_empty() {
-            return Err(WorkspaceError::Tool {
-                code: "SESSION_CLOSED",
-                message: "Session is closed; stdin write blocked.".into(),
-                category: "runtime",
-                retryable: false,
-            });
-        }
-        return Ok(tool_ok(session.snapshot(max_output_bytes)));
-    }
-
-    if !chars.is_empty() {
-        let mut stdin_guard = tauri::async_runtime::block_on(session.stdin.lock());
-        let stdin = stdin_guard.as_mut().ok_or_else(|| WorkspaceError::Tool {
-            code: "SESSION_CLOSED",
-            message: "Session stdin is closed.".into(),
-            category: "runtime",
-            retryable: false,
-        })?;
-        use tokio::io::AsyncWriteExt;
-        tauri::async_runtime::block_on(async {
-            stdin
-                .write_all(chars.as_bytes())
-                .await
-                .map_err(|_| WorkspaceError::Tool {
-                    code: "SESSION_CLOSED",
-                    message: "Session stdin is closed.".into(),
-                    category: "runtime",
-                    retryable: false,
-                })
-        })?;
-        let _ = tauri::async_runtime::block_on(stdin.flush());
-    }
-
-    let yield_ms = args
-        .get("yield_time_ms")
-        .and_then(Value::as_u64)
-        .unwrap_or(1000)
-        .min(30_000);
-    std::thread::sleep(std::time::Duration::from_millis(yield_ms));
-    tauri::async_runtime::block_on(session.refresh_status());
-    Ok(tool_ok(session.snapshot(max_output_bytes)))
-}
-
-pub fn kill_session(store: &SessionStore, args: &Value) -> Result<Value, WorkspaceError> {
-    let session_id = args
-        .get("session_id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| WorkspaceError::invalid_argument("session_id is required"))?;
-    let session = store.get(session_id)?;
-    let max_output_bytes = args
-        .get("max_output_bytes")
-        .and_then(Value::as_u64)
-        .unwrap_or(65_536) as usize;
-    let wait_ms = args
-        .get("wait_ms")
-        .and_then(Value::as_u64)
-        .unwrap_or(5000)
-        .min(30_000);
-    let signal = args.get("signal").and_then(Value::as_str).unwrap_or("TERM");
-
-    let running = tauri::async_runtime::block_on(session.is_running());
-    let mut killed = false;
-    let mut status = "exited";
-    let mut evicted = true;
-
-    if running {
-        session.mark_termination_reason("killed");
-        tauri::async_runtime::block_on(async {
-            let pid = {
-                let child = session.child.lock().await;
-                child.id()
-            };
-            if let Some(pid) = pid {
-                send_session_signal(pid, signal);
-            } else {
-                let mut child = session.child.lock().await;
-                let _ = child.start_kill();
-            }
-            let _ = tokio::time::timeout(std::time::Duration::from_millis(wait_ms), async {
-                let mut child = session.child.lock().await;
-                let _ = child.wait().await;
-            })
-            .await;
-        });
-        tauri::async_runtime::block_on(session.refresh_status());
-        if tauri::async_runtime::block_on(session.is_running()) {
-            status = "terminating";
-            evicted = false;
-        } else {
-            killed = true;
-            status = "killed";
-        }
-    }
-
-    let mut payload = session.snapshot(max_output_bytes);
-    if let Some(obj) = payload.as_object_mut() {
-        obj.insert("killed".into(), json!(killed));
-        obj.insert("status".into(), json!(status));
-        obj.insert("evicted".into(), json!(evicted));
-        if status == "terminating" {
-            obj.insert(
-                "warnings".into(),
-                json!(["Process did not exit after kill; session retained for retry"]),
-            );
-        }
-    }
-
-    if evicted {
-        store.remove(session_id);
-    }
-
-    Ok(tool_ok(payload))
-}
-
-#[cfg(unix)]
-fn send_session_signal(pid: u32, signal: &str) {
-    let sig = match signal {
-        "KILL" => libc::SIGKILL,
-        "INT" => libc::SIGINT,
-        _ => libc::SIGTERM,
-    };
-    unsafe {
-        libc::kill(pid as i32, sig);
-    }
-}
-
-#[cfg(windows)]
-fn send_session_signal(pid: u32, _signal: &str) {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
-
-    unsafe {
-        if let Ok(handle) = OpenProcess(PROCESS_TERMINATE, false, pid) {
-            let _ = TerminateProcess(handle, 1);
-            let _ = CloseHandle(handle);
-        }
     }
 }

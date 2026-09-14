@@ -71,6 +71,8 @@ pub fn build_openapi(tools: &[Value], public_base_url: &str, auth_type: &str) ->
         paths.insert(format!("/actions/{name}"), json!({ "post": operation }));
     }
 
+    paths.insert("/actions/return_pdf".into(), super::pdf::openapi_path(use_api_key));
+
     let mut document = json!({
         "openapi": "3.1.0",
         "info": {

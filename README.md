@@ -115,6 +115,17 @@ check_exec_environment
 
 这样 Agent 不需要依赖聊天上下文猜测当前项目、工作目录和执行能力。
 
+## 0.3.0 本机体验改进
+
+- 工作区页面新增“本机浏览器”：连接、停止、刷新状态，安装包自带桥接依赖；本机需要 Node.js 20+ 和 Playwright Extension。
+- 命令输出按工作区写入本机私有归档，完成后或重新打开会话仍可通过原 `output_ref` / `session_id` 查询。每个流保留最后 1 MiB，已结束记录最多 100 条；`read_output` 返回绝对字节偏移和 `prefix_lost`。
+- 服务重启后未完成命令标为 `interrupted` / `server_restart`，结果未知，不会自动重跑。运行中最多约 500ms 的新输出可能尚未落盘；`output_persistence_ok=false` 表示归档失败，需及时读取输出。
+- GPT Actions 新增 PDF 附件返回接口，参见 [PDF 接入说明](docs/actions-pdf.md)。需要已配置公网 Actions 和目标 GPT，MCP 地址不能直接替代 Actions 地址。
+
+## 读取本地 Chrome（可选）
+
+通过独立的本机 Playwright 扩展桥接，提供 `browser_open`、`browser_list_tabs`、`browser_read_page`、`browser_screenshot`。打开网址后可默认读取新页并分析；未打开新页时使用扩展连接时选中的标签页。导航工具不在 read-only 配置中提供。安装、启动及权限边界见 [浏览器桥接指南](docs/browser-bridge.md)。
+
 ## ChatGPT 的两种接入方式
 
 | 方式 | 适合场景 | 在客户端中使用什么 |
