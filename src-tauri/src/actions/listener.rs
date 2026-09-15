@@ -18,6 +18,7 @@ use crate::auth::{
     authorization_server_metadata, authorize_get, authorize_post, external_base_url,
     token_exchange, AuthorizeForm, AuthorizeParams, OAuthRuntime, TokenForm,
 };
+use crate::request_log::{log_http_errors, RequestLogContext};
 use crate::tools::{self, is_allowed_tool, policy::PolicySettings, wrap_tool_result, ToolContext};
 use crate::tunnel::append_profile_log;
 
@@ -201,6 +202,13 @@ async fn serve(
         .merge(protected)
         .with_state(state)
         .merge(pdf_routes)
+        .layer(middleware::from_fn_with_state(
+            RequestLogContext {
+                workspace_id: profile_id.to_string(),
+                service: "actions",
+            },
+            log_http_errors,
+        ))
         .layer(CorsLayer::permissive());
 
     append_profile_log(

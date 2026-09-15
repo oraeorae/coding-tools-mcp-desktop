@@ -7,6 +7,7 @@ use tauri::State;
 
 use crate::app_state::AppState;
 use crate::error::{AppError, AppResult};
+use crate::request_log::RequestErrorEntry;
 use crate::tunnel::log_dir_for_profile;
 use crate::workspace::WorkspaceProfile;
 
@@ -100,4 +101,24 @@ pub async fn read_workspace_logs(
     }
 
     Ok(chunks)
+}
+
+#[tauri::command]
+pub async fn read_request_errors(
+    state: State<'_, AppState>,
+    id: String,
+    service: String,
+) -> AppResult<Vec<RequestErrorEntry>> {
+    let profile = profile_by_id(&state, &id)?;
+    crate::request_log::read_request_errors(&profile.id, &service)
+}
+
+#[tauri::command]
+pub async fn clear_request_errors(
+    state: State<'_, AppState>,
+    id: String,
+    service: String,
+) -> AppResult<()> {
+    let profile = profile_by_id(&state, &id)?;
+    crate::request_log::clear_request_errors(&profile.id, &service)
 }

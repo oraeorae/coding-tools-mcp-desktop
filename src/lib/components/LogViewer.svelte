@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { readWorkspaceLogs, type LogChunk, type LogService } from "$lib/api/logs";
+  import RequestErrorViewer from "$lib/components/RequestErrorViewer.svelte";
 
   interface Props {
     workspaceId: string;
@@ -37,6 +38,9 @@
     }
   });
 </script>
+
+<div class="grid gap-4">
+<RequestErrorViewer {workspaceId} {service} />
 
 <section class="tx-card p-5">
   <div class="flex items-start justify-between gap-3">
@@ -79,3 +83,4 @@
     <p class="mt-4 text-sm text-[var(--color-text-muted)]">当前还没有日志</p>
   {/if}
 </section>
+</div>

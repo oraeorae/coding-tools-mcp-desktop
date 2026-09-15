@@ -20,7 +20,7 @@ pub use frp_profiles::{
     save_frp_profile, set_last_workspace, set_proxy,
 };
 pub use health::run_health_checks;
-pub use logs::read_workspace_logs;
+pub use logs::{clear_request_errors, read_request_errors, read_workspace_logs};
 pub use runtime::{
     get_actions_runtime_status, get_runtime_status, restart_actions_runtime, restart_runtime,
     start_actions_runtime, start_runtime, stop_actions_runtime, stop_runtime,

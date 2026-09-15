@@ -12,6 +12,7 @@ mod health;
 mod local_update;
 mod mcp;
 mod platform;
+mod request_log;
 mod runtime;
 mod secret;
 mod settings;
@@ -27,7 +28,8 @@ use commands::{
     get_actions_runtime_status, get_app_settings, get_download_config, get_frp_snippet,
     get_last_workspace_id, get_proxy, get_runtime_status, get_shared_secret, get_webview_memory_sample,
     get_workspace_secret, hide_to_tray, install_software, list_frp_profiles, list_software,
-    list_workspaces, open_url, open_workspace_directory, quit_app, read_workspace_logs,
+    clear_request_errors, list_workspaces, open_url, open_workspace_directory, quit_app,
+    read_request_errors, read_workspace_logs,
     recreate_ui_webview, regenerate_shared_secret, regenerate_workspace_secret,
     restart_actions_runtime, restart_runtime, restart_tunnel, run_health_checks, save_frp_profile,
     set_download_config, set_last_workspace, set_proxy, set_shared_secret, set_workspace_secret,
@@ -200,6 +202,8 @@ pub fn run() {
             set_shared_secret,
             regenerate_shared_secret,
             read_workspace_logs,
+            read_request_errors,
+            clear_request_errors,
             list_frp_profiles,
             save_frp_profile,
             delete_frp_profile,

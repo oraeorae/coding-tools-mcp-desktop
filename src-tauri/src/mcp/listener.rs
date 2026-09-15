@@ -5,7 +5,7 @@ use axum::extract::{Form, Query, State};
 use axum::http::{header::CACHE_CONTROL, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
 use tower_http::cors::CorsLayer;
@@ -16,6 +16,9 @@ use crate::auth::{
     AuthorizeForm, AuthorizeParams, OAuthRuntime, TokenForm,
 };
 use crate::mcp::server::{handle_request, new_state, SharedState};
+use crate::request_log::{
+    log_http_errors, record_request_error, RequestError, RequestLogContext,
+};
 use crate::secret::SecretStore;
 use crate::tools::Workspace;
 use crate::tunnel::append_profile_log;
@@ -139,6 +142,13 @@ async fn serve(
         .route("/oauth/authorize", get(oauth_authorize_get).post(oauth_authorize_post))
         .route("/oauth/token", post(oauth_token_post))
         .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            RequestLogContext {
+                workspace_id: profile_id.clone(),
+                service: "mcp",
+            },
+            log_http_errors,
+        ))
         .layer(CorsLayer::permissive());
 
     append_profile_log(
@@ -250,6 +260,57 @@ async fn mcp_post(
                     ),
                 );
             }
+            if let Some(error) = response.get("error") {
+                let code = error
+                    .get("code")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "json_rpc_error".into());
+                let message = error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("JSON-RPC request failed");
+                record_request_error(
+                    &profile_id,
+                    RequestError {
+                        service: "mcp",
+                        source: "rpc",
+                        method: &method,
+                        path: "/mcp",
+                        status: None,
+                        code: &code,
+                        message,
+                        request_id: &request_id.to_string(),
+                        tool: &tool_name,
+                    },
+                );
+            } else if response
+                .get("result")
+                .and_then(|result| result.get("isError"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let structured = response
+                    .get("result")
+                    .and_then(|result| result.get("structuredContent"));
+                let message = structured
+                    .and_then(|value| value.get("termination_reason"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("Tool returned an error");
+                record_request_error(
+                    &profile_id,
+                    RequestError {
+                        service: "mcp",
+                        source: "rpc",
+                        method: &method,
+                        path: "/mcp",
+                        status: None,
+                        code: "tool_error",
+                        message,
+                        request_id: &request_id.to_string(),
+                        tool: &tool_name,
+                    },
+                );
+            }
             Json(response).into_response()
         }
         Err(error) => {
@@ -260,6 +321,20 @@ async fn mcp_post(
                     "[rpc] worker_failed id={} method={} tool={} error={error}",
                     request_id, method, tool_name
                 ),
+            );
+            record_request_error(
+                &profile_id,
+                RequestError {
+                    service: "mcp",
+                    source: "rpc",
+                    method: &method,
+                    path: "/mcp",
+                    status: None,
+                    code: "worker_failed",
+                    message: "Exec RPC worker failed",
+                    request_id: &request_id.to_string(),
+                    tool: &tool_name,
+                },
             );
             Json(json!({
                 "jsonrpc": "2.0",
