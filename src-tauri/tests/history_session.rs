@@ -650,3 +650,21 @@ fn copy_directory(source: &Path, target: &Path) {
         }
     }
 }
+
+#[test]
+fn contended_history_lock_returns_busy_without_modifying_archives() {
+    use fs2::FileExt;
+    let (workspace, _harness, ctx) = test_context();
+    let dir = workspace.path().join("docs/history-session");
+    fs::create_dir_all(&dir).unwrap();
+    let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(dir.join(".history.lock")).unwrap();
+    lock.lock_exclusive().unwrap();
+    let start = std::time::Instant::now();
+    let result = invoke(&ctx, "history_session_bootstrap", json!({"session_key": "contended"}));
+    assert_eq!(assert_err(&result)["error"]["code"], "HISTORY_BUSY");
+    assert!(start.elapsed() < std::time::Duration::from_secs(3));
+    assert!(!dir.join("1.md").exists());
+    FileExt::unlock(&lock).unwrap();
+    invoke_ok(&ctx, "history_session_bootstrap", json!({"session_key": "contended", "initial_user_input": "save progress"}));
+    assert!(dir.join("1.md").is_file());
+}

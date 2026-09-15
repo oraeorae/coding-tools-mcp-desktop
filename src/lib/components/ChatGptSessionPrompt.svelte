@@ -3,10 +3,12 @@
   import { onDestroy } from "svelte";
   import { showToast } from "$lib/stores/toast";
 
-  const sessionPrompt = `请初始化或恢复当前项目会话，先调用 history_session_bootstrap，并把我的首次请求逐字传入 initial_user_input。
+  const sessionPrompt = `查询当前路径、服务状态等简单问题时，直接调用对应工具，不要初始化或写入历史。
+仅当我要求继续历史任务或保存进度时，调用 history_session_bootstrap，并把本次请求逐字传入 initial_user_input。
 如果没有历史记录，则创建首个 history-session；如果已有历史记录，先阅读返回的有界 state。
 需要早期精确细节时，先调用 history_session_search，再用 history_session_read 分页读取相关原始 Markdown，并根据 next_cursor 继续直到完成；不要要求 bootstrap 返回全部历史。
-本会话每轮任务完成后调用 history_session_checkpoint，并原样传入 bootstrap 返回的 session_key 和 current_path，以及我本轮请求的逐字 raw_user_input。
+仅在历史初始化成功且我要求保存进度的任务完成后，调用 history_session_checkpoint，并原样传入 bootstrap 返回的 session_key 和 current_path，以及我本轮请求的逐字 raw_user_input。
+历史调用超时或繁忙时，不要自动重试，也不要宣称已保存；可继续处理不依赖历史的请求。
 只有 checkpoint 返回 ok=true 且会话目标一致后才能确认进度已保存；服务端不能自动读取未通过工具参数传入的对话内容。`;
 
   let copying = $state(false);
@@ -66,7 +68,7 @@
           ChatGPT 新会话启动提示词
         </h3>
         <p class="mt-0.5 text-xs leading-5 text-[var(--color-text-muted)]">
-          首次使用会初始化历史；后续新会话会自动恢复已有进度。
+          简单查询直接执行；继续任务或保存进度时才读取历史。
         </p>
       </div>
     </div>

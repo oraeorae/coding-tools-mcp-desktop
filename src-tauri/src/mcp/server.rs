@@ -51,7 +51,7 @@ fn initialize_result() -> Value {
             "title": "Coding Tools MCP",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use these tools only for local coding operations inside the configured workspace. At the start of every new ChatGPT conversation, before answering the user's first request, call history_session_bootstrap exactly once and pass the user's verbatim first request as initial_user_input. Treat bootstrap as required conversation initialization: it creates or resumes a lossless Markdown archive and returns bounded current state, not all history. Use history_session_search followed by history_session_read only when exact earlier context is needed. history_session_read returns a bounded UTF-8-safe page; follow next_cursor with the returned content hash until the relevant archive is complete. Repeated successful bootstrap calls in the same conversation resume the same session and must not create duplicates. Preserve session_key and current_path returned by bootstrap, then pass them unchanged as session_key and expected_path to every history_session_checkpoint call. After completing each user-requested task in the conversation, call history_session_checkpoint before the final response and pass that user's verbatim request as raw_user_input. Only state that progress was saved after checkpoint returns ok=true with the same session_key and path. The server cannot access ChatGPT transcript text that was not provided as a tool argument; persistence is not automatic background persistence."
+        "instructions": "Use these tools only for local coding operations inside the configured workspace. For simple requests such as current path (get_default_cwd), server status (server_info), or environment status, call the requested tool directly and do not initialize or checkpoint history. History is opt-in: call history_session_bootstrap only when the user asks to resume previous work or save progress, passing the user's verbatim request as initial_user_input. It creates or resumes a lossless Markdown archive and returns bounded current state, not all history. If history returns HISTORY_TIMEOUT or HISTORY_BUSY, explain the failure briefly, continue independent tools, and do not automatically retry or claim progress was saved. Use history_session_search followed by history_session_read only when exact earlier context is needed. history_session_read returns a bounded UTF-8-safe page; follow next_cursor with the returned content hash until the relevant archive is complete. Repeated successful bootstrap calls in the same conversation resume the same session and must not create duplicates. Preserve session_key and current_path returned by bootstrap, then pass them unchanged as session_key and expected_path to every history_session_checkpoint call. Only after successful opt-in bootstrap, call history_session_checkpoint after completing a task that the user asked to persist and pass that user's verbatim request as raw_user_input. Only state that progress was saved after checkpoint returns ok=true with the same session_key and path. The server cannot access ChatGPT transcript text that was not provided as a tool argument; persistence is not automatic background persistence."
     })
 }
 
@@ -130,9 +130,9 @@ mod tests {
         let initialized = initialize_result();
         let instructions = initialized["instructions"].as_str().expect("instructions");
         assert!(instructions.contains("history_session_bootstrap"));
-        assert!(instructions.contains("At the start of every new ChatGPT conversation"));
-        assert!(instructions.contains("before answering the user's first request"));
-        assert!(instructions.contains("required conversation initialization"));
+        assert!(instructions.contains("History is opt-in"));
+        assert!(instructions.contains("call the requested tool directly"));
+        assert!(!instructions.contains("required conversation initialization"));
         assert!(instructions.contains("initial_user_input"));
         assert!(instructions.contains("must not create duplicates"));
         assert!(instructions.contains("history_session_checkpoint"));
@@ -142,8 +142,8 @@ mod tests {
         assert!(instructions.contains("follow next_cursor"));
         assert!(instructions.contains("session_key and current_path returned by bootstrap"));
         assert!(instructions.contains("session_key and expected_path"));
-        assert!(instructions.contains("After completing each user-requested task"));
-        assert!(instructions.contains("before the final response"));
+        assert!(instructions.contains("Only after successful opt-in bootstrap"));
+        assert!(instructions.contains("do not automatically retry"));
         assert!(instructions.contains("checkpoint returns ok=true"));
         assert!(instructions.contains("not automatic background persistence"));
     }
@@ -160,7 +160,7 @@ mod tests {
         let component = include_str!("../../../src/lib/components/ChatGptSessionPrompt.svelte");
 
         assert!(component.contains("ChatGPT 新会话启动提示词"));
-        assert!(component.contains("请初始化或恢复当前项目会话"));
+        assert!(component.contains("仅当我要求继续历史任务或保存进度时"));
         assert!(component.contains("如果没有历史记录"));
         assert!(component.contains("initial_user_input"));
         assert!(component.contains("raw_user_input"));

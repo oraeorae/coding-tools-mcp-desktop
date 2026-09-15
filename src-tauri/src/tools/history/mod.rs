@@ -177,20 +177,21 @@ pub fn bootstrap(ctx: &ToolContext, args: &Value) -> WorkspaceResult<Value> {
         "state": state,
         "history_read_mode": "bounded_state_with_on_demand_search_and_read",
         "persistence_mode": "model_mediated_tool_calls",
-        "assistant_instructions": "Use the bounded state to begin work. To recover exact earlier context, call history_session_search and then history_session_read for only the relevant archive. Preserve session_key and current_path. Before the final response for each user task, call history_session_checkpoint with the user's verbatim raw_user_input. The server can only save text passed as tool arguments and reports missing input explicitly.",
+        "assistant_instructions": "Use the bounded state to begin work. To recover exact earlier context, call history_session_search and then history_session_read for only the relevant archive. Preserve session_key and current_path. Only for tasks the user asks to persist, call history_session_checkpoint with the user's verbatim raw_user_input. Standalone path and status queries do not require history calls. The server can only save text passed as tool arguments and reports missing input explicitly.",
         "required_next_actions": [
             "review_bounded_state",
             "search_or_read_relevant_archives_when_precision_is_needed",
             "verify_workspace_state",
             "execute_user_task",
-            "checkpoint_with_raw_user_input_before_final_response"
+            "checkpoint_with_raw_user_input_when_user_requests_persistence"
         ],
         "checkpoint_policy": {
             "tool": "history_session_checkpoint",
             "session_key": session_key,
             "expected_path": current_path,
             "raw_user_input_required_for_full_fidelity": true,
-            "required_before_final_response": true,
+            "required_before_final_response": false,
+            "when": "user_requests_persistence",
             "automatic_background_persistence": false
         },
         "search_guide": {
@@ -645,7 +646,7 @@ fn bound_bootstrap_result(result: &mut Value) {
     encoded = serde_json::to_vec(result).unwrap_or_default();
     if encoded.len() > BOOTSTRAP_RESPONSE_BUDGET {
         if let Some(object) = result.as_object_mut() {
-            object.insert("assistant_instructions".into(), Value::String("Use history_session_search and history_session_read for exact archive context; checkpoint raw_user_input before final response.".into()));
+            object.insert("assistant_instructions".into(), Value::String("Use history_session_search and history_session_read for exact archive context; checkpoint raw_user_input only when the user requests persistence.".into()));
             object.insert(
                 "warnings".into(),
                 json!(["Bootstrap state was reduced to preserve a bounded remote response."]),

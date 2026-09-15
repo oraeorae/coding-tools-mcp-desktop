@@ -32,7 +32,7 @@ pub const P0_TOOLS: &[(&str, &str, &str, bool, bool, bool)] = &[
     (
         "history_session_bootstrap",
         "Initialize or restore development session",
-        "At the start of every new ChatGPT conversation, call this exactly once before the first response and pass the user's verbatim initial_user_input. It creates or resumes a lossless archive, then returns bounded current state and search/read guidance rather than all history.",
+        "Optional history initialization: call only when the user asks to resume earlier work or save progress; pass the user's verbatim request as initial_user_input. For current path, status, or other standalone queries, call the requested tool directly without bootstrap or checkpoint. Returns bounded current state, not all history. Do not automatically retry HISTORY_TIMEOUT or HISTORY_BUSY.",
         false,
         false,
         false,

@@ -162,7 +162,7 @@
 
 #### 验收标准（EARS）
 
-1. WHEN ChatGPT 初始化 MCP 连接 THEN 系统 SHALL 在 `initialize.result.instructions` 中说明：每个新聊天首次回复前调用 bootstrap 并传入逐字 `initial_user_input`；每轮任务完成、最终回复前调用 checkpoint 并传入逐字 `raw_user_input`。
+1. WHEN ChatGPT 初始化 MCP 连接 THEN 系统 SHALL 在 `initialize.result.instructions` 中说明：当前路径、服务状态等独立查询直接执行，不调用历史工具；仅在用户要求继续历史任务或保存进度时调用 bootstrap 并传入逐字 `initial_user_input`；成功启用历史后，用户要求保存的任务完成时调用 checkpoint 并传入逐字 `raw_user_input`。
 2. WHEN bootstrap 成功 THEN 系统 SHALL 返回 `assistant_instructions`、`required_next_actions`、`checkpoint_policy`、输入捕获状态和历史检索指引。
 3. WHEN 客户端调用 `tools/list` THEN bootstrap 和 checkpoint 描述 SHALL 明确各自的原始用户输入参数与服务端无法自行读取聊天转录的边界；search/read 描述 SHALL 明确它们是按需恢复入口。
 4. WHEN 模型未执行 checkpoint 或未传入原始输入 THEN 服务端 SHALL 不宣称已自动持久化；第一版不修改或拦截现有工具，也不具备脱离模型调用的后台自动写入能力。
@@ -203,3 +203,11 @@
 - 现有 `src-tauri/src/tools/registry.rs`：注册工具及 Schema。
 - 现有 `src-tauri/src/tools/dispatch.rs`：唯一执行入口。
 - 现有 `Workspace`：工作区路径边界。
+
+
+### 2026-09-15 历史调用等待边界
+
+- MCP HTTP 历史调用的响应等待上限为 5 秒。超时返回 `HISTORY_TIMEOUT`，结果状态为 unknown，不承诺取消已运行的系统 I/O，不自动重试。
+- 每个运行中的 MCP listener 最多一个历史工作线程。响应超时或客户端断开后仍保留工作线程的许可，直到工作线程实际结束。繁忙请求返回 `HISTORY_BUSY` / not_started。
+- 历史文件锁竞争最多等待 1 秒；该限制不等于中止系统 open。默认目录与历史文件保持不变。
+- 非历史工具不经过历史许可。请求日志记录时间戳、追踪 ID 和耗时，不记录输入正文或凭证。

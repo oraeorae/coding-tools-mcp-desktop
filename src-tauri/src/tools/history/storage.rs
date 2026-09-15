@@ -106,7 +106,19 @@ pub fn lock_directory(path: &Path) -> WorkspaceResult<HistoryLock> {
         .write(true)
         .open(lock_path)
         .map_err(|error| io_error("HISTORY_LOCK_FAILED", error, true))?;
-    FileExt::lock_exclusive(&file).map_err(|error| io_error("HISTORY_LOCK_FAILED", error, true))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    loop {
+        match FileExt::try_lock_exclusive(&file) {
+            Ok(()) => break,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(io_error("HISTORY_BUSY", error, true));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(error) => return Err(io_error("HISTORY_LOCK_FAILED", error, true)),
+        }
+    }
     Ok(HistoryLock { file })
 }
 

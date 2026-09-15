@@ -7,7 +7,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Semaphore};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use super::history_deadline::{run_history, error_response, HISTORY_DEADLINE};
 use tower_http::cors::CorsLayer;
 
 use crate::auth::{
@@ -30,6 +32,7 @@ pub type ShutdownSender = oneshot::Sender<()>;
 #[derive(Clone)]
 struct ListenerState {
     mcp: SharedState,
+    history_gate: Arc<Semaphore>,
     auth: AuthConfig,
     workspace_id: String,
     workspace_path: String,
@@ -93,6 +96,7 @@ pub fn spawn_listener(
     };
     let state = ListenerState {
         mcp,
+        history_gate: Arc::new(Semaphore::new(1)),
         auth,
         workspace_id,
         workspace_path: workspace_display,
@@ -211,24 +215,46 @@ async fn mcp_post(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
+    let started = Instant::now();
+    let timestamp_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    let trace_id = uuid::Uuid::new_v4().to_string();
     append_profile_log(
         &state.workspace_id,
         "mcp-requests.log",
         &format!(
-            "[rpc] request id={} method={} tool={}",
+            "[rpc] request ts_ms={timestamp_ms} trace={trace_id} id={} method={} tool={}",
             request_id, method, tool_name
         ),
     );
 
     let mcp = state.mcp.clone();
     let profile_id = state.workspace_id.clone();
-    let result = tokio::task::spawn_blocking(move || handle_request(&mcp, &body)).await;
+    let result = if method == "tools/call" && tool_name.starts_with("history_session_") {
+        let worker_profile = profile_id.clone();
+        let worker_trace = trace_id.clone();
+        let response_id = request_id.clone();
+        match run_history(state.history_gate.clone(), HISTORY_DEADLINE, move || {
+            let response = handle_request(&mcp, &body);
+            append_profile_log(&worker_profile, "mcp-requests.log", &format!(
+                "[rpc] history_worker_finished trace={worker_trace} elapsed_ms={}", started.elapsed().as_millis()));
+            response
+        }).await {
+            Ok(response) => Ok(response),
+            Err(code) => {
+                append_profile_log(&profile_id, "mcp-requests.log", &format!(
+                    "[rpc] history_wait_failed trace={trace_id} code={code} elapsed_ms={}", started.elapsed().as_millis()));
+                Ok(error_response(response_id, code))
+            }
+        }
+    } else {
+        tokio::task::spawn_blocking(move || handle_request(&mcp, &body)).await
+    };
     match result {
         Ok(response) => {
             append_profile_log(
                 &profile_id,
                 "mcp-requests.log",
-                &format!("[rpc] completed id={} method={} tool={}", request_id, method, tool_name),
+                &format!("[rpc] completed trace={trace_id} elapsed_ms={} id={} method={} tool={}", started.elapsed().as_millis(), request_id, method, tool_name),
             );
             if tool_name == "exec_command" || tool_name == "exec_health_check" {
                 let structured = response
@@ -475,4 +501,39 @@ mod tests {
 
         assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
     }
+    #[tokio::test]
+    async fn busy_history_does_not_block_path_or_create_an_archive() {
+        use super::*;
+        let root = tempfile::tempdir().unwrap();
+        let harness = tempfile::tempdir().unwrap();
+        let mcp = Arc::new(crate::tools::ToolContext::for_test(root.path().into(), harness.path().into()).unwrap());
+        let state = ListenerState {
+            mcp,
+            history_gate: Arc::new(Semaphore::new(1)),
+            auth: AuthConfig { auth_type: "noauth".into(), ..AuthConfig::default() },
+            workspace_id: format!("latency-test-{}", uuid::Uuid::new_v4()),
+            workspace_path: root.path().display().to_string(),
+            bind_port: 0,
+            configured_public_url: String::new(),
+            bearer_token: None, oauth: None, oauth_client_secret: None,
+        };
+        let _held = state.history_gate.clone().acquire_owned().await.unwrap();
+        let response = mcp_post(State(state.clone()), HeaderMap::new(), Json(json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "history_session_bootstrap", "arguments": {"session_key": "test"}
+            }
+        }))).await;
+        let body = axum::body::to_bytes(response.into_body(), 65536).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["result"]["structuredContent"]["error"]["code"], "HISTORY_BUSY");
+        let response = tokio::time::timeout(std::time::Duration::from_secs(1), mcp_post(
+            State(state), HeaderMap::new(), Json(json!({"jsonrpc": "2.0", "id": 2,
+            "method": "tools/call", "params": {"name": "get_default_cwd", "arguments": {}}}))
+        )).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 65536).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["result"]["structuredContent"]["ok"], true);
+        assert!(!root.path().join("docs/history-session").exists());
+    }
+
 }
