@@ -2,15 +2,49 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::audit::{AuditRequestContext, AuditStore};
+use crate::mcp::upstream::UpstreamMcpManager;
 use crate::tools::{
-    call_tool, list_tools_for_profile, wrap_mcp_tool_result, SharedToolContext, ToolContext,
-    Workspace,
+    call_tool_with_audit, list_tools_for_profile, record_tool_rejection_with_audit,
+    wrap_mcp_tool_result, SharedToolContext, ToolContext, Workspace,
 };
 use crate::workspace::AuthConfig;
 
-pub type SharedState = SharedToolContext;
+pub struct McpState {
+    pub tools: SharedToolContext,
+    pub upstream: Arc<UpstreamMcpManager>,
+}
 
+impl McpState {
+    pub fn audit_store(&self) -> Option<AuditStore> {
+        self.tools.audit_store()
+    }
+}
+
+pub type SharedState = Arc<McpState>;
+
+// 生产入口接收监听层采集的 headers 上下文；原 handle_request 仅为无 HTTP 环境的测试生成
+// 最小上下文。协议分发保持与 Axum 解耦，且只让 tools/call 进入工具审计。
+#[cfg(test)]
 pub fn handle_request(state: &SharedState, body: &Value) -> Value {
+    let request = AuditRequestContext {
+        transport: "mcp".into(),
+        method: body
+            .get("method")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        request_id: body.get("id").and_then(crate::audit::request_id_from_value),
+        route: Some("/mcp".into()),
+        ..AuditRequestContext::default()
+    };
+    handle_request_with_context(state, body, &request)
+}
+
+pub fn handle_request_with_context(
+    state: &SharedState,
+    body: &Value,
+    request: &AuditRequestContext,
+) -> Value {
     let method = body.get("method").and_then(Value::as_str).unwrap_or("");
     let id = body.get("id").cloned().unwrap_or(Value::Null);
     let params = body.get("params").cloned().unwrap_or(Value::Null);
@@ -23,10 +57,11 @@ pub fn handle_request(state: &SharedState, body: &Value) -> Value {
         "initialize" => Ok(initialize_result()),
         "ping" => Ok(serde_json::json!({})),
         "tools/list" => {
-            let tools = list_tools_for_profile(&state.tool_profile);
+            let mut tools = list_tools_for_profile(&state.tools.tool_profile);
+            tools.extend(state.upstream.public_tools().iter().cloned());
             Ok(serde_json::json!({ "tools": tools }))
         }
-        "tools/call" => handle_tools_call(state, &params),
+        "tools/call" => handle_tools_call(state, &params, request),
         _ => Err(serde_json::json!({
             "code": -32601,
             "message": format!("Method not found: {method}")
@@ -55,25 +90,68 @@ fn initialize_result() -> Value {
     })
 }
 
-fn handle_tools_call(state: &SharedState, params: &Value) -> Result<Value, Value> {
+fn handle_tools_call(
+    state: &SharedState,
+    params: &Value,
+    request: &AuditRequestContext,
+) -> Result<Value, Value> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| serde_json::json!({ "code": -32602, "message": "Missing tool name" }))?;
     let args = tool_arguments(name, params);
 
+    if state.upstream.owns_tool(name) {
+        let result = tauri::async_runtime::block_on(state.upstream.call_tool(name, args));
+        return Ok(normalize_upstream_result(result));
+    }
+
     let canonical_name = crate::tools::registry::canonical_tool_name(name);
-    let known = crate::tools::registry::exposed_tool_names(&state.tool_profile);
+    let known = crate::tools::registry::exposed_tool_names(&state.tools.tool_profile);
+    // 未知/未暴露工具在 dispatcher 前提前返回，拒绝记录必须放在这里；通过校验的路径改用
+    // audited wrapper，审计成功与否都不改变原 MCP 结果。
     if !known.iter().any(|n| n == &canonical_name) {
+        let message = format!("Unknown tool: {name}");
+        record_tool_rejection_with_audit(
+            state.tools.as_ref(),
+            request,
+            name,
+            &args,
+            "UNKNOWN_TOOL",
+            &message,
+        );
         return Err(serde_json::json!({
             "code": -32602,
-            "message": format!("Unknown tool: {name}"),
+            "message": message,
             "data": { "reason": "unknown_tool" }
         }));
     }
 
-    let structured = call_tool(state.as_ref(), canonical_name, &args);
+    let structured = call_tool_with_audit(state.tools.as_ref(), canonical_name, &args, request);
     Ok(wrap_mcp_tool_result(canonical_name, &args, structured))
+}
+
+fn normalize_upstream_result(result: Result<Value, String>) -> Value {
+    match result {
+        Ok(result) if result.get("content").is_some() => result,
+        Ok(result) => serde_json::json!({
+            "content": [{ "type": "text", "text": result.to_string() }],
+            "structuredContent": result,
+            "isError": false
+        }),
+        Err(message) => serde_json::json!({
+            "content": [{ "type": "text", "text": message }],
+            "structuredContent": {
+                "ok": false,
+                "status": "error",
+                "error": {
+                    "category": "upstream_mcp",
+                    "message": "本地 MCP 工具调用失败"
+                }
+            },
+            "isError": true
+        }),
+    }
 }
 
 fn tool_arguments(name: &str, params: &Value) -> Value {
@@ -98,20 +176,24 @@ fn tool_arguments(name: &str, params: &Value) -> Value {
     args
 }
 
+// 审计在 SharedState 创建时绑定：此处同时拥有正式 workspace_id，且尚未被多请求共享；
+// 测试构造路径可不调用 with_audit，因此不会写入用户数据库。
 pub fn new_state(
     workspace: Workspace,
+    workspace_id: String,
     auth: AuthConfig,
     policy: crate::tools::policy::PolicySettings,
     tool_profile: String,
     permission_mode: String,
+    upstream: Arc<UpstreamMcpManager>,
 ) -> SharedState {
-    Arc::new(ToolContext::from_workspace(
-        workspace,
-        auth,
-        policy,
-        tool_profile,
-        permission_mode,
-    ))
+    Arc::new(McpState {
+        tools: Arc::new(
+            ToolContext::from_workspace(workspace, auth, policy, tool_profile, permission_mode)
+                .with_audit(workspace_id),
+        ),
+        upstream,
+    })
 }
 
 #[cfg(test)]
@@ -121,9 +203,10 @@ mod tests {
 
     use serde_json::json;
 
+    use crate::mcp::upstream::UpstreamMcpManager;
     use crate::tools::ToolContext;
 
-    use super::{handle_request, initialize_result, tool_arguments};
+    use super::{handle_request, initialize_result, tool_arguments, McpState};
 
     #[test]
     fn initialize_instructions_define_the_history_persistence_workflow() {
@@ -188,10 +271,13 @@ mod tests {
     fn host_session_key_takes_precedence_over_explicit_session_key() {
         let workspace = tempfile::tempdir().expect("workspace tempdir");
         let harness = tempfile::tempdir().expect("harness tempdir");
-        let state = Arc::new(
-            ToolContext::for_test(workspace.path().to_path_buf(), harness.path().to_path_buf())
-                .expect("tool context"),
-        );
+        let state = Arc::new(McpState {
+            tools: Arc::new(
+                ToolContext::for_test(workspace.path().to_path_buf(), harness.path().to_path_buf())
+                    .expect("tool context"),
+            ),
+            upstream: Arc::new(UpstreamMcpManager::empty()),
+        });
         let response = handle_request(
             &state,
             &json!({
@@ -225,10 +311,13 @@ mod tests {
         let harness = tempfile::tempdir().expect("harness tempdir");
         fs::write(workspace.path().join("sample.txt"), "catalog needle")
             .expect("write sample file");
-        let state = Arc::new(
-            ToolContext::for_test(workspace.path().to_path_buf(), harness.path().to_path_buf())
-                .expect("tool context"),
-        );
+        let state = Arc::new(McpState {
+            tools: Arc::new(
+                ToolContext::for_test(workspace.path().to_path_buf(), harness.path().to_path_buf())
+                    .expect("tool context"),
+            ),
+            upstream: Arc::new(UpstreamMcpManager::empty()),
+        });
 
         let response = handle_request(
             &state,

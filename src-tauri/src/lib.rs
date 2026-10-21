@@ -1,9 +1,11 @@
 #![cfg_attr(target_os = "windows", allow(linker_messages))]
 
 mod actions;
+mod access_log;
 mod app_state;
 mod browser_runtime;
 mod auth;
+mod audit;
 mod commands;
 mod data;
 mod error;
@@ -24,15 +26,19 @@ mod workspace;
 use app_state::AppState;
 use commands::{
     browser_status, start_browser_bridge, stop_browser_bridge,
-    check_app_update, create_workspace, delete_frp_profile, delete_workspace,
+    check_app_update, clear_all_logs, create_workspace, delete_frp_profile, delete_workspace,
+    discover_upstream_tools, get_audit_config, get_audit_record, get_audit_stats,
+    query_audit_records,
     get_actions_runtime_status, get_app_settings, get_download_config, get_frp_snippet,
     get_last_workspace_id, get_proxy, get_runtime_status, get_shared_secret, get_webview_memory_sample,
     get_workspace_secret, hide_to_tray, install_software, list_frp_profiles, list_software,
     clear_request_errors, list_workspaces, open_url, open_workspace_directory, quit_app,
     read_request_errors, read_workspace_logs,
-    recreate_ui_webview, regenerate_shared_secret, regenerate_workspace_secret,
+    open_http_access_log_directory, query_http_access_logs, recreate_ui_webview,
+    regenerate_shared_secret, regenerate_workspace_secret,
     restart_actions_runtime, restart_runtime, restart_tunnel, run_health_checks, save_frp_profile,
-    set_download_config, set_last_workspace, set_proxy, set_shared_secret, set_workspace_secret,
+    set_audit_config, set_download_config, set_last_workspace, set_proxy, set_shared_secret,
+    set_workspace_secret,
     show_main_window, start_actions_runtime, start_runtime, start_tunnel, stop_actions_runtime,
     stop_runtime, stop_tunnel, test_tunnel, uninstall_software, update_workspace,
 };
@@ -164,6 +170,11 @@ pub fn run() {
         .setup(|app| {
             app.manage(AppState::new().expect("failed to load app state"));
             local_update::schedule_restore(app.handle().clone());
+            // 上一次异常退出可能留下仍在运行的隧道子进程；先按镜像路径清理，
+            // 避免它们继续持有工作区目录并触发系统授权弹窗。
+            tauri::async_runtime::spawn(async {
+                let _ = tunnel::terminate_recorded_tunnel_children_on_startup().await;
+            });
             // Recover FRP clients that stay alive while the public proxy dies
             // (common after install/restart network blips).
             tunnel::ensure_frp_health_loop();
@@ -178,10 +189,19 @@ pub fn run() {
             browser_status, start_browser_bridge, stop_browser_bridge,
             list_workspaces,
             create_workspace,
+            discover_upstream_tools,
             update_workspace,
             open_workspace_directory,
             open_url,
             check_app_update,
+            get_audit_config,
+            set_audit_config,
+            clear_all_logs,
+            query_audit_records,
+            get_audit_record,
+            get_audit_stats,
+            query_http_access_logs,
+            open_http_access_log_directory,
             delete_workspace,
             start_runtime,
             stop_runtime,
@@ -235,6 +255,12 @@ pub fn run() {
                 if commands::ui_memory::should_prevent_exit() {
                     api.prevent_exit();
                 }
+            }
+            tauri::RunEvent::Exit => {
+                // 隧道子进程必须随应用一起退出。macOS 上残留的 frpc / cloudflared
+                // 仍以工作区目录为 cwd 存活，会持续触发文件夹授权弹窗，且用户
+                // 关掉界面后依然反复出现。
+                tunnel::terminate_children_on_exit();
             }
             tauri::RunEvent::WindowEvent { label, event, .. } => {
                 if label != "main" {

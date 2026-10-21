@@ -1,7 +1,9 @@
 use std::path::Path;
+use std::time::Instant;
 
 use serde_json::{json, Value};
 
+use crate::audit::{current_time_ms, AuditRequestContext};
 use crate::tools::context::ToolContext;
 use crate::tools::policy::{validate_tool_arguments_for_workspace, PolicyError};
 use crate::tools::workspace::{tool_err, tool_err_code, tool_ok, WorkspaceError};
@@ -188,10 +190,14 @@ pub fn call_tool(ctx: &ToolContext, name: &str, args: &Value) -> Value {
         && standalone_operation(name)
         && output.get("ok") == Some(&Value::Bool(true))
     {
-        attach_standalone_metadata(
-            &mut output,
-            "当前操作已在 standalone 模式完成；如需继续，直接调用下一个开发工具。",
-        );
+        let hint = if output.get("status").and_then(Value::as_str) == Some("running") {
+            "命令仍在运行；使用 session_id 调用 write_stdin（chars 为空）等待完成；使用 output_refs 调用 read_output 读取输出。"
+        } else if output.get("command_ok") == Some(&Value::Bool(false)) {
+            "命令未成功；请检查 stderr、exit_code 或调整参数后重试。"
+        } else {
+            "当前操作已在 standalone 模式完成；如需继续，直接调用下一个开发工具。"
+        };
+        attach_standalone_metadata(&mut output, hint);
     }
     if let Some(operation) = operation.as_ref() {
         if let Some(object) = output.as_object_mut() {
@@ -230,6 +236,63 @@ pub fn call_tool(ctx: &ToolContext, name: &str, args: &Value) -> Value {
         );
     }
     output
+}
+
+// 审计包装紧贴唯一 dispatcher：执行前固化补全默认 cwd 后的实际参数，用单调时钟计时，
+// 执行后记录同一份结果；HTTP 元数据仍由传输入口提供。写审计失败只告警，不改变工具响应。
+pub fn call_tool_with_audit(
+    ctx: &ToolContext,
+    name: &str,
+    args: &Value,
+    request: &AuditRequestContext,
+) -> Value {
+    let started_at_ms = current_time_ms();
+    let started = Instant::now();
+    let audited_args = apply_default_cwd(ctx, name, args);
+    let output = call_tool(ctx, name, args);
+    let elapsed_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
+    let finished_at_ms = started_at_ms.saturating_add(elapsed_ms);
+    if let Some(audit) = ctx.audit_store() {
+        if let Err(error) = audit.record_tool_call(
+            request,
+            ctx.audit_workspace_id(),
+            &ctx.workspace_path(),
+            name,
+            &audited_args,
+            &output,
+            started_at_ms,
+            finished_at_ms,
+        ) {
+            eprintln!("audit tool record failed: {error}");
+        }
+    }
+    output
+}
+
+// 入口拒绝发生在 dispatcher 之前，无法走正常包装；集中在这里落库，使 MCP 与 Actions
+// 共享工作区身份、状态分类和 fail-open 策略。
+pub fn record_tool_rejection_with_audit(
+    ctx: &ToolContext,
+    request: &AuditRequestContext,
+    name: &str,
+    args: &Value,
+    error_code: &str,
+    error_message: &str,
+) {
+    let Some(audit) = ctx.audit_store() else {
+        return;
+    };
+    if let Err(error) = audit.record_tool_rejection(
+        request,
+        ctx.audit_workspace_id(),
+        &ctx.workspace_path(),
+        name,
+        args,
+        error_code,
+        error_message,
+    ) {
+        eprintln!("audit tool rejection record failed: {error}");
+    }
 }
 
 fn apply_default_cwd(ctx: &ToolContext, name: &str, args: &Value) -> Value {

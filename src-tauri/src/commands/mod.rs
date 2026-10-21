@@ -1,6 +1,8 @@
 mod browser;
 pub use browser::{browser_status, start_browser_bridge, stop_browser_bridge};
+mod access_logs;
 mod app_info;
+mod audit;
 mod frp_profiles;
 mod health;
 mod logs;
@@ -13,6 +15,11 @@ pub(crate) mod window_chrome;
 mod workspace;
 
 pub use app_info::{check_app_update, open_url};
+pub use access_logs::{open_http_access_log_directory, query_http_access_logs};
+pub use audit::{
+    clear_all_logs, get_audit_config, get_audit_record, get_audit_stats, query_audit_records,
+    set_audit_config,
+};
 pub use ui_memory::{get_webview_memory_sample, recreate_ui_webview};
 pub use window_chrome::{hide_to_tray, quit_app, show_main_window};
 pub use frp_profiles::{
@@ -35,5 +42,6 @@ pub use software::{
 };
 pub use tunnel::{get_frp_snippet, restart_tunnel, start_tunnel, stop_tunnel, test_tunnel};
 pub use workspace::{
-    create_workspace, delete_workspace, list_workspaces, open_workspace_directory, update_workspace,
+    create_workspace, delete_workspace, discover_upstream_tools, list_workspaces,
+    open_workspace_directory, update_workspace,
 };

@@ -126,3 +126,4 @@ src/lib/components/LogViewer.svelte
 - [x] 数据模型与接口契约清晰
 - [x] 关键设计决策已记录
 - [x] 测试策略可验证验收标准
+

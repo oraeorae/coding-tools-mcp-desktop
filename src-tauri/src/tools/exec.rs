@@ -10,6 +10,9 @@ use tokio::process::Command;
 use std::sync::Arc;
 
 use crate::tools::context::ToolContext;
+use super::command_line::split_command;
+use super::exec_paths::resolve_workdir;
+use super::policy::is_allowlisted_program;
 use crate::tools::session::{ExecSession, SessionStore};
 use crate::tools::workspace::{tool_ok, WorkspaceError};
 
@@ -23,7 +26,7 @@ pub fn exec_command(ctx: &ToolContext, args: &Value) -> Result<Value, WorkspaceE
         .or_else(|| args.get("cwd"))
         .and_then(Value::as_str)
         .unwrap_or(".");
-    let workdir = ctx.workspace.resolve_existing(workdir_raw)?;
+    let workdir = resolve_workdir(&ctx.workspace, workdir_raw)?;
     if !workdir.path.is_dir() {
         return Err(WorkspaceError::not_a_directory(
             "workdir is not a directory",
@@ -134,8 +137,7 @@ fn run_native_diagnostic(
     cmd: &str,
     cwd: &Path,
 ) -> Result<Option<Value>, WorkspaceError> {
-    let parts = shell_words::split(cmd)
-        .map_err(|_| WorkspaceError::invalid_argument("Invalid command syntax"))?;
+    let parts = split_command(cmd).map_err(WorkspaceError::invalid_argument)?;
     if parts.is_empty() {
         return Ok(None);
     }
@@ -472,6 +474,7 @@ fn execution_failure_result(error: &WorkspaceError, command: &str, cwd: &Path) -
         object.insert("execution_boundary".into(), json!("policy_only"));
         object.insert("child_process".into(), Value::Bool(true));
         object.insert("transport_ok".into(), Value::Bool(true));
+        object.insert("ok".into(), Value::Bool(false));
         object.insert("command_ok".into(), Value::Bool(false));
         object.insert("error".into(), error_value);
         if code == "TIMEOUT" {
@@ -534,8 +537,7 @@ fn parse_and_resolve(
     workspace_root: &Path,
     policy: &crate::tools::policy::PolicySettings,
 ) -> Result<(String, Vec<String>), WorkspaceError> {
-    let parts = shell_words::split(cmd)
-        .map_err(|_| WorkspaceError::invalid_argument("Invalid command syntax"))?;
+    let parts = split_command(cmd).map_err(WorkspaceError::invalid_argument)?;
     if parts.is_empty() {
         return Err(WorkspaceError::invalid_argument("Empty command"));
     }
@@ -577,13 +579,20 @@ fn resolve_program(
                     category: "runtime",
                     retryable: true,
                 })?;
-        if !resolved.starts_with(&canonical_workspace) {
-            // External executables require an exact canonical path registered
-            // in local configuration. A basename or a symlink registration is
-            // insufficient, so retargeting a symlink cannot extend the grant.
-            if policy.allowed_commands.contains(resolved.to_string_lossy().as_ref()) {
-                return Ok(resolved.to_string_lossy().into_owned());
-            }
+        let base_name = candidate.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        let allowlisted = is_allowlisted_program(policy, base_name);
+        // Preserve the local absolute-path grant used by quant environments,
+        // while also accepting a configured PATH entry when it resolves to
+        // this exact executable. Both checks are canonical and cannot be
+        // widened by retargeting a symlink after configuration.
+        let exact_path_entry = policy
+            .allowed_commands
+            .contains(resolved.to_string_lossy().as_ref());
+        let is_path_entry = allowlisted && policy.allowed_commands.iter().any(|name| {
+            which::which(name).ok().and_then(|path| path.canonicalize().ok())
+                .is_some_and(|path| path == resolved)
+        });
+        if !resolved.starts_with(&canonical_workspace) && !exact_path_entry && !is_path_entry {
             return Err(WorkspaceError::Tool {
                 code: "EXECUTABLE_OUTSIDE_WORKSPACE",
                 message: format!("Workspace 外可执行文件被拒绝: {trimmed}"),
@@ -591,15 +600,19 @@ fn resolve_program(
                 retryable: false,
             });
         }
-        let extension = resolved
+        let extension = candidate
             .extension()
             .and_then(|value| value.to_str())
             .map(|value| format!(".{}", value.to_ascii_lowercase()))
             .unwrap_or_default();
-        if policy.workspace_local_entries
-            && (extension.is_empty() || policy.workspace_script_extensions.contains(&extension))
+        if exact_path_entry || is_path_entry || (policy.workspace_local_entries
+            && (allowlisted || extension.is_empty() || policy.workspace_script_extensions.contains(&extension)))
         {
-            return Ok(resolved.to_string_lossy().into_owned());
+            // Canonicalize for containment above, but do not dereference the
+            // executable at launch: Python discovers pyvenv.cfg from its entry.
+            let entry = candidate.parent().and_then(|parent| parent.canonicalize().ok())
+                .map(|parent| parent.join(candidate.file_name().unwrap())).unwrap_or(candidate);
+            return Ok(entry.to_string_lossy().into_owned());
         }
         return Err(WorkspaceError::Tool {
             code: "COMMAND_REJECTED",
