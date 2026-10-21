@@ -1,0 +1,7 @@
+{
+  "src-tauri/src/actions/pdf.rs": "77bce2e6f7fdc3743b8357ccf732f21c07dc433d7b7d44770f6cb6b462dd0d8c",
+  "src-tauri/src/actions/pdf_tests.rs": "056482d9247a736cf8e6a4f2716afb86bc84cb69e0dc147c17b445ba5995c840",
+  "src-tauri/src/actions/listener.rs": "5abf4b5b219f95a3a7f4fff7070b13fc1374ad078167389fe4507aaa21a40c4a",
+  "src-tauri/src/actions/openapi.rs": "f871b0c0960a76f4065286d322631d2ac144fffc1cb5f615cc382fd15ef5754c",
+  "src-tauri/src/actions/mod.rs": "434137b587ae48699dabe1ba91c3933ce9f9cc0e7d55108e625d15b87c7c0fad"
+}

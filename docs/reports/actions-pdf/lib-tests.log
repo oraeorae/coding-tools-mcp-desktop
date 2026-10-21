@@ -1,0 +1,131 @@
+warning: function `bytes_to_mb` is never used
+  --> src/commands/ui_memory.rs:47:4
+   |
+47 | fn bytes_to_mb(bytes: u64) -> f64 {
+   |    ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `coding-tools-mcp-desktop` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/coding_tools_mcp_desktop_lib-1e691a9551a67f25)
+
+running 116 tests
+test actions::listener::tests::bind_listener_reports_port_conflict_synchronously ... ok
+test actions::pdf::tests::validates_configured_urls ... ok
+test auth::oauth::tests::oauth_enabled_only_for_oauth_type ... ok
+test actions::openapi::tests::openapi_api_key_includes_bearer_security ... ok
+test auth::oauth::tests::authorization_metadata_includes_token_auth_methods ... ok
+test auth::oauth::tests::protected_resource_metadata_lists_authorization_servers ... ok
+test auth::oauth::tests::external_base_url_prefers_configured_url ... ok
+test actions::openapi::tests::openapi_without_auth_has_no_security_scheme ... ok
+test auth::bearer::tests::rejects_missing_or_invalid_bearer_token ... ok
+test auth::bearer::tests::accepts_valid_bearer_token ... ok
+test auth::oauth::tests::external_base_url_uses_host_header ... ok
+test auth::oauth::tests::external_base_url_uses_forwarded_host ... ok
+test data::store::tests::shared_oauth_client_id_uses_client_id_format ... ok
+test auth::oauth_flow::tests::pkce_round_trip ... ok
+test actions::pdf::tests::cache_expires_and_enforces_capacity_without_evicting_active_links ... ok
+test mcp::listener::tests::bind_listener_reports_port_conflict_synchronously ... ok
+test mcp::listener::tests::discovery_prevents_stale_tool_catalog_caching ... ok
+test mcp::listener::tests::discovery_reports_the_current_package_version ... ok
+test mcp::server::tests::initialize_does_not_claim_tool_catalog_notifications_without_a_stream ... ok
+test mcp::server::tests::initialize_instructions_define_the_history_persistence_workflow ... ok
+test mcp::server::tests::chatgpt_session_metadata_is_injected_only_for_history_tools ... ok
+test mcp::server::tests::workspace_prompt_initializes_or_restores_a_chatgpt_session ... ok
+test platform::macos::process::tests::process_image_path_reads_current_process ... ok
+test platform::open::tests::allows_http_and_https ... ok
+test platform::open::tests::rejects_non_http_schemes_and_junk ... ok
+test runtime::supervisor::tests::a_recovered_port_clears_missing_port_checks ... ok
+test auth::oauth_flow::tests::token_exchange_without_client_secret ... ok
+test runtime::supervisor::tests::refresh_cleans_up_only_after_running_runtime_is_confirmed_missing ... ok
+test runtime::supervisor::tests::refresh_does_not_cleanup_a_running_runtime_that_is_listening ... ok
+test runtime::supervisor::tests::refresh_does_not_cleanup_a_starting_runtime ... ok
+test secret::keyring_store::tests::random_secret_is_non_empty ... ok
+test settings::model::tests::accepts_frontend_camel_case_server_port ... ok
+test settings::model::tests::keeps_legacy_snake_case_server_port_compatible ... ok
+test tools::browser::tests::browser_arguments_are_strict_and_bounded ... ok
+test tools::browser::tests::local_config_is_workspace_bound ... ok
+test tools::exec::tests::启动失败时返回统一执行结果 ... ok
+test tools::exec::tests::程序不存在时返回统一执行结果 ... ok
+test actions::pdf::tests::expired_and_unknown_downloads_are_not_found ... ok
+test actions::pdf::tests::openapi_uses_top_level_file_contract_and_retains_tool_contracts ... ok
+test tools::patch::tests::preserves_crlf_when_inserting_multiple_lines ... ok
+test actions::openapi::tests::core_openapi_exposes_grep_text_as_read_only ... ok
+test secret::keyring_store::tests::workspace_secret_roundtrip ... ok
+test tools::exec::tests::resolves_an_arbitrarily_named_workspace_local_entry ... ok
+test actions::pdf::tests::preserves_read_path_boundary ... ok
+test tools::policy::tests::patch_size_uses_workspace_limit ... ok
+test data::store::tests::workspace_secret_roundtrip ... ok
+test tools::patch::tests::validation_failure_in_later_file_keeps_all_files_unchanged ... ok
+test tools::patch::tests::patch_check_does_not_modify_workspace ... ok
+test tools::policy::tests::workspace_allowed_commands_override_defaults ... ok
+test tunnel::access::tests::network_recovery_requires_sustained_offline ... ok
+test tunnel::access::tests::single_offline_probe_does_not_mark_outage ... ok
+test tunnel::cloudflare::tests::adds_http2_protocol_args_when_enabled ... ok
+test mcp::server::tests::legacy_grep_calls_are_mapped_to_the_public_grep_text_tool ... ok
+test tunnel::cloudflare::tests::extracts_trycloudflare_url_from_log_line ... ok
+test tunnel::cloudflare::tests::ignores_invalid_hosts ... ok
+test tunnel::cloudflare::tests::omits_protocol_args_when_disabled ... ok
+test runtime::port::tests::rejects_a_different_macos_bundle_identifier ... ok
+test tools::patch::tests::delete_then_add_same_path_replaces_instead_of_concatenating_old_content ... ok
+test tunnel::frp::client::tests::aggregate_proxy_is_enabled_when_any_route_requests_it ... ok
+test runtime::port::tests::recognizes_a_previous_coding_tools_macos_bundle ... ok
+test actions::pdf::tests::http_auth_file_return_headers_snapshot_and_retry ... ok
+test tunnel::frp::client::tests::all_distinct_proxy_successes_are_counted ... ok
+test tunnel::frp::client::tests::frp_not_found_html_is_classified_as_not_routed ... ok
+test tunnel::frp::client::tests::login_success_alone_is_not_a_ready_proxy ... ok
+test tools::registry::tests::core_catalog_exposes_26_chatgpt_compatible_tools ... ok
+test tunnel::frp::client::tests::reconnect_loop_is_detected_from_trailing_errors ... ok
+test tunnel::frp::client::tests::managed_pid_paths_are_isolated_and_sanitize_workspace_ids ... ok
+test runtime::port::tests::rejects_a_matching_identifier_from_a_different_app_bundle ... ok
+test tunnel::frp::client::tests::successful_relogin_clears_reconnect_loop ... ok
+test tunnel::frp::client::tests::managed_config_paths_are_isolated_by_workspace ... ok
+test tools::policy::tests::quoted_python_code_is_not_treated_as_shell_chaining ... ok
+test tools::policy::tests::configured_commands_keep_basic_diagnostics ... ok
+test tools::policy::tests::basic_diagnostic_commands_are_allowed ... ok
+test tools::policy::tests::trusted_mode_accepts_any_configured_workspace_script_extension ... ok
+test tunnel::frp::tests::build_frpc_toml_for_routes_returns_empty_for_no_routes ... ok
+test tunnel::frp::tests::build_frpc_toml_uses_global_profile_server ... ok
+test tools::policy::tests::trusted_mode_accepts_an_extensionless_workspace_entry ... ok
+test tunnel::supervisor::tests::restore_active_frp_routes_rehydrates_all_listening_workspaces ... ok
+test tunnel::frp::tests::build_frpc_toml_for_routes_contains_all_proxies ... ok
+test tunnel::supervisor::tests::sync_frp_sessions_removes_stale_frp_entries_and_updates_urls ... ok
+test tunnel::supervisor::tests::syncing_one_workspace_does_not_change_another_workspace_pid ... ok
+test update::tests::compare_versions_orders_semver ... ok
+test update::tests::normalize_strips_v_prefix ... ok
+test update::tests::parse_latest_detects_newer_release ... ok
+test update::tests::parse_latest_rejects_bad_tag ... ok
+test tunnel::frp::tests::mcp_snippet_uses_tunnel_subdomain ... ok
+test update::tests::parse_latest_reports_up_to_date ... ok
+test workspace::legacy_import::tests::legacy_home_points_under_user_home ... ok
+test workspace::resources::tests::allows_a_workspace_to_keep_its_own_ports ... ok
+test workspace::resources::tests::allows_fixing_mcp_port_when_legacy_actions_conflict_is_unchanged ... ok
+test workspace::resources::tests::assign_free_ports_avoids_colliding_mcp_and_actions ... ok
+test workspace::resources::tests::assign_free_ports_keeps_defaults_when_available ... ok
+test workspace::resources::tests::assign_free_ports_skips_ports_claimed_by_other_workspaces ... ok
+test workspace::resources::tests::ignores_blank_subdomain_claims ... ok
+test workspace::resources::tests::rejects_changed_mcp_port_that_conflicts_with_another_service ... ok
+test workspace::resources::tests::rejects_duplicate_mcp_port_across_workspaces_before_start ... ok
+test workspace::resources::tests::rejects_duplicate_ports_between_services_in_one_workspace ... ok
+test workspace::resources::tests::rejects_duplicate_subdomains_with_owner_details ... ok
+test workspace::resources::tests::rejects_port_shared_by_mcp_and_another_workspace_actions ... ok
+test workspace::resources::tests::start_is_blocked_when_target_participates_in_legacy_duplicate ... ok
+test workspace::resources::tests::unrelated_update_is_not_blocked_by_legacy_duplicates ... ok
+test tunnel::supervisor::tests::active_routes_reject_duplicate_subdomains_case_insensitively ... ok
+test tunnel::supervisor::tests::stale_profile_does_not_match_a_replaced_route ... ok
+test tunnel::frp::tests::proxy_name_is_stable_when_workspace_is_renamed ... ok
+test tunnel::frp::tests::same_name_workspaces_receive_distinct_proxy_names ... ok
+test actions::pdf::tests::rejects_invalid_files_and_accepts_size_boundary ... ok
+test tunnel::frp::tests::build_frpc_toml_for_routes_keeps_workspace_proxy_names_unique ... ok
+test tunnel::supervisor::tests::active_routes_allow_distinct_subdomains ... ok
+test tunnel::supervisor::tests::active_routes_allow_mixed_proxy_preferences ... ok
+test tunnel::supervisor::tests::different_workspaces_may_use_different_frp_servers ... ok
+test tunnel::frp::tests::resolve_token_from_matching_global_profile_when_manual_server ... ok
+test tunnel::frp::tests::build_frpc_toml_for_routes_supports_mcp_and_actions_together ... ok
+test harness::state::tests::status_keeps_read_available_without_task ... ok
+test harness::state::tests::starting_task_does_not_create_workspace_copies ... ok
+test mcp::server::tests::host_session_key_takes_precedence_over_explicit_session_key ... ok
+test tools::exec::tests::unix_workspace_scripts_preserve_space_paths_and_arguments ... ok
+
+test result: ok. 116 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s

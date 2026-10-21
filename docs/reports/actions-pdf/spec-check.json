@@ -1,0 +1,87 @@
+{
+  "ok": true,
+  "tool": "check_spec",
+  "version": "4.0.1",
+  "durationMs": 4,
+  "project": {
+    "root": "/Users/robot/Documents/ChatGPT/tools-coding/coding-tools-mcp",
+    "source": "explicit",
+    "explicitHonored": true
+  },
+  "runtime": {
+    "packageVersion": "4.0.1",
+    "manifestVersion": "4.0.1",
+    "packageSpec": "mcp-probe-kit@4.0.1",
+    "skillVersion": "4.0.1",
+    "versionAligned": true
+  },
+  "bootstrap": {
+    "skill": {
+      "skillPath": "/Users/robot/Documents/ChatGPT/tools-coding/coding-tools-mcp/.agents/skills/mcp-probe-kit/SKILL.md",
+      "skillRelPath": ".agents/skills/mcp-probe-kit/SKILL.md",
+      "existed": true,
+      "created": false,
+      "updated": false,
+      "version": "4.0.1",
+      "previousVersion": "4.0.1",
+      "changed": false
+    },
+    "agentsMd": {
+      "path": "AGENTS.md",
+      "existed": true,
+      "created": false,
+      "updated": false,
+      "changed": false
+    },
+    "cliFallback": {
+      "manifestPath": ".mcp-probe-kit/runtime.json",
+      "preservedNewerVersion": false,
+      "files": [
+        {
+          "path": ".mcp-probe-kit/bin/probe.ps1",
+          "created": false,
+          "updated": false,
+          "skipped": true
+        },
+        {
+          "path": ".mcp-probe-kit/bin/probe.cmd",
+          "created": false,
+          "updated": false,
+          "skipped": true
+        },
+        {
+          "path": ".mcp-probe-kit/bin/probe",
+          "created": false,
+          "updated": false,
+          "skipped": true
+        },
+        {
+          "path": ".mcp-probe-kit/runtime.json",
+          "created": false,
+          "updated": false,
+          "skipped": true
+        }
+      ]
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "# ✅ 规格校验通过：gpt-actions\n\n规格校验通过（4 条需求）\n\n**需求清单**: FR-1, FR-2, FR-3, FR-4\n\n**下一步**: 规格已具备可实现性，可进入实现/估算阶段。"
+    }
+  ],
+  "structuredContent": {
+    "passed": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "issues": [],
+    "frIds": [
+      "FR-1",
+      "FR-2",
+      "FR-3",
+      "FR-4"
+    ],
+    "summary": "规格校验通过（4 条需求）"
+  },
+  "isError": false
+}

@@ -1,0 +1,27 @@
+   Compiling coding-tools-mcp-desktop v0.2.1 (/Users/robot/Documents/ChatGPT/tools-coding/coding-tools-mcp/src-tauri)
+warning: function `bytes_to_mb` is never used
+  --> src/commands/ui_memory.rs:47:4
+   |
+47 | fn bytes_to_mb(bytes: u64) -> f64 {
+   |    ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `coding-tools-mcp-desktop` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.85s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/coding_tools_mcp_desktop_lib-1e691a9551a67f25)
+
+running 11 tests
+test actions::listener::tests::bind_listener_reports_port_conflict_synchronously ... ok
+test actions::openapi::tests::openapi_api_key_includes_bearer_security ... ok
+test actions::openapi::tests::openapi_without_auth_has_no_security_scheme ... ok
+test actions::pdf::tests::validates_configured_urls ... ok
+test actions::pdf::tests::cache_expires_and_enforces_capacity_without_evicting_active_links ... ok
+test actions::pdf::tests::preserves_read_path_boundary ... ok
+test actions::pdf::tests::expired_and_unknown_downloads_are_not_found ... ok
+test actions::openapi::tests::core_openapi_exposes_grep_text_as_read_only ... ok
+test actions::pdf::tests::openapi_uses_top_level_file_contract_and_retains_tool_contracts ... ok
+test actions::pdf::tests::http_auth_file_return_headers_snapshot_and_retry ... ok
+test actions::pdf::tests::rejects_invalid_files_and_accepts_size_boundary ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.01s
