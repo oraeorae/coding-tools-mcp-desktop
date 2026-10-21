@@ -71,7 +71,7 @@
           disabled={busy}
           onclick={() => void runQuit()}
         >
-          直接关闭
+          退出并停止服务
         </button>
       </div>
     </div>

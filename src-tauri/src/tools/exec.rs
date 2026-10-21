@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::tools::context::ToolContext;
 use super::command_line::split_command;
 use super::exec_paths::resolve_workdir;
-use super::policy::is_allowlisted_program;
+use super::policy::{is_allowlisted_program, is_basic_read_only_program};
 use crate::tools::session::{ExecSession, SessionStore};
 use crate::tools::workspace::{tool_ok, WorkspaceError};
 
@@ -67,7 +67,10 @@ pub fn exec_command(ctx: &ToolContext, args: &Value) -> Result<Value, WorkspaceE
     let yield_ms = args
         .get("yield_time_ms")
         .and_then(Value::as_u64)
-        .unwrap_or(1000)
+        // Keep the implementation default aligned with the exec_command
+        // schema. A one-second default makes ordinary short commands appear
+        // to be long-running sessions and forces unnecessary polling.
+        .unwrap_or(5000)
         .min(30_000);
     let tty = args.get("tty").and_then(Value::as_bool).unwrap_or(false);
     let stdin_text = args.get("stdin").and_then(Value::as_str).unwrap_or("");
@@ -581,31 +584,50 @@ fn resolve_program(
                 })?;
         let base_name = candidate.file_name().and_then(|name| name.to_str()).unwrap_or("");
         let allowlisted = is_allowlisted_program(policy, base_name);
-        // Preserve the local absolute-path grant used by quant environments,
-        // while also accepting a configured PATH entry when it resolves to
-        // this exact executable. Both checks are canonical and cannot be
-        // widened by retargeting a symlink after configuration.
+        // Preserve the local absolute-path grant used by quant environments.
+        // Workspace-external paths require an exact canonical registration;
+        // a basename allowlist must not silently authorize an absolute path.
         let exact_path_entry = policy
             .allowed_commands
             .contains(resolved.to_string_lossy().as_ref());
-        let is_path_entry = allowlisted && policy.allowed_commands.iter().any(|name| {
-            which::which(name).ok().and_then(|path| path.canonicalize().ok())
-                .is_some_and(|path| path == resolved)
-        });
-        if !resolved.starts_with(&canonical_workspace) && !exact_path_entry && !is_path_entry {
-            return Err(WorkspaceError::Tool {
-                code: "EXECUTABLE_OUTSIDE_WORKSPACE",
-                message: format!("Workspace 外可执行文件被拒绝: {trimmed}"),
-                category: "security",
-                retryable: false,
+        let path_names: Vec<&str> = if base_name.starts_with("python") {
+            policy
+                .allowed_commands
+                .iter()
+                .map(String::as_str)
+                .filter(|name| name.starts_with("python"))
+                .collect()
+        } else {
+            vec![base_name]
+        };
+        let is_path_entry = allowlisted
+            && !is_basic_read_only_program(base_name)
+            && path_names.iter().any(|name| {
+                which::which(name)
+                    .ok()
+                    .and_then(|path| path.canonicalize().ok())
+                    .is_some_and(|path| path == resolved)
             });
+        if !resolved.starts_with(&canonical_workspace) {
+            if exact_path_entry {
+                return Ok(resolved.to_string_lossy().into_owned());
+            }
+            if is_path_entry {
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
+            return Err(WorkspaceError::Tool {
+                    code: "EXECUTABLE_OUTSIDE_WORKSPACE",
+                    message: format!("Workspace 外可执行文件被拒绝: {trimmed}"),
+                    category: "security",
+                    retryable: false,
+                });
         }
         let extension = candidate
             .extension()
             .and_then(|value| value.to_str())
             .map(|value| format!(".{}", value.to_ascii_lowercase()))
             .unwrap_or_default();
-        if exact_path_entry || is_path_entry || (policy.workspace_local_entries
+        if is_path_entry || (policy.workspace_local_entries
             && (allowlisted || extension.is_empty() || policy.workspace_script_extensions.contains(&extension)))
         {
             // Canonicalize for containment above, but do not dereference the

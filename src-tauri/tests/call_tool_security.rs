@@ -2,6 +2,7 @@ mod common;
 
 use std::fs;
 
+use coding_tools_mcp_desktop_lib::tools::Workspace;
 use common::*;
 use serde_json::json;
 
@@ -24,6 +25,43 @@ fn read_file_rejects_symlink_escape() {
 }
 
 #[test]
+fn approved_root_allows_symlink_read_but_not_write() {
+    let fx = malicious_fixture();
+    let allowed_root = fx
+        .outside_secret
+        .parent()
+        .expect("外部目录")
+        .to_string_lossy()
+        .to_string();
+    let workspace = Workspace::with_allowed_roots(fx.root.clone(), &[allowed_root])
+        .expect("创建带允许根目录的工作区");
+
+    let resolved = workspace
+        .resolve_existing("outside-link.txt")
+        .expect("允许读取指向 allowlist 的符号链接");
+    assert_eq!(resolved.path, fs::canonicalize(&fx.outside_secret).unwrap());
+    assert!(workspace.resolve_for_write("outside-link.txt").is_err());
+}
+
+#[test]
+fn unapproved_root_still_rejects_symlink_read() {
+    let fx = malicious_fixture();
+    let unrelated = tempfile::tempdir().expect("无关目录");
+    let allowed_root = unrelated.path().to_string_lossy().to_string();
+    let workspace = Workspace::with_allowed_roots(fx.root.clone(), &[allowed_root])
+        .expect("创建带允许根目录的工作区");
+
+    let error = workspace.resolve_existing("outside-link.txt").unwrap_err();
+    assert!(matches!(
+        error,
+        coding_tools_mcp_desktop_lib::tools::workspace::WorkspaceError::Tool {
+            code: "SYMLINK_ESCAPE",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn apply_patch_rejects_traversal_target() {
     let fx = malicious_fixture();
     let ctx = ctx_for(&fx.root);
@@ -31,30 +69,84 @@ fn apply_patch_rejects_traversal_target() {
     assert_security_or_policy_err(&out);
 }
 
+fn ctx_with_external_root(
+    root: &std::path::Path,
+    external_root: &std::path::Path,
+) -> coding_tools_mcp_desktop_lib::tools::ToolContext {
+    let workspace = Workspace::with_read_policy(
+        root.to_path_buf(),
+        &[external_root.to_string_lossy().to_string()],
+        true,
+    )
+    .expect("创建带外部允许根目录的工作区");
+    coding_tools_mcp_desktop_lib::tools::ToolContext::from_workspace(
+        workspace,
+        coding_tools_mcp_desktop_lib::tools::AuthConfig::default(),
+        coding_tools_mcp_desktop_lib::tools::policy::PolicySettings::default(),
+        "full".into(),
+        "trusted".into(),
+    )
+}
+
 #[test]
-fn read_file_allows_explicit_external_read_only_path() {
+fn read_file_rejects_unapproved_explicit_external_path() {
     let fx = malicious_fixture();
+    let unrelated = tempfile::tempdir().expect("无关允许根目录");
     let out = invoke(
-        &ctx_for(&fx.root),
+        &ctx_with_external_root(&fx.root, unrelated.path()),
+        "read_file",
+        json!({"path": fx.outside_secret.to_string_lossy()}),
+    );
+    assert_security_or_policy_err(&out);
+}
+
+#[test]
+fn read_file_rejects_parent_traversal_outside_allowed_roots() {
+    let fx = malicious_fixture();
+    let unrelated = tempfile::tempdir().expect("无关目录");
+    let workspace = Workspace::with_read_policy(
+        fx.root.clone(),
+        &[unrelated.path().to_string_lossy().to_string()],
+        true,
+    )
+    .expect("创建允许显式外部路径的工作区");
+
+    let error = workspace
+        .resolve_read_path("../outside-secret.txt")
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        coding_tools_mcp_desktop_lib::tools::workspace::WorkspaceError::Tool {
+            code: "PATH_OUTSIDE_WORKSPACE",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn read_file_allows_explicit_path_inside_approved_root() {
+    let fx = malicious_fixture();
+    let external_root = fx.outside_secret.parent().expect("外部目录");
+    let out = invoke(
+        &ctx_with_external_root(&fx.root, external_root),
         "read_file",
         json!({"path": fx.outside_secret.to_string_lossy()}),
     );
     let result = assert_ok(&out);
-    assert!(result["content"].as_str().unwrap_or("").contains("TOP_SECRET"));
+    assert!(result["content"]
+        .as_str()
+        .unwrap_or("")
+        .contains("TOP_SECRET"));
 }
 
 #[test]
 fn external_read_tools_allow_directory_listing_and_search() {
     let fx = malicious_fixture();
-    let ctx = ctx_for(&fx.root);
     let parent = fx.outside_secret.parent().expect("外部目录");
+    let ctx = ctx_with_external_root(&fx.root, parent);
     let parent_text = parent.to_string_lossy().to_string();
 
-    let listed_result = invoke(
-        &ctx,
-        "list_dir",
-        json!({"path": parent_text}),
-    );
+    let listed_result = invoke(&ctx, "list_dir", json!({"path": parent_text}));
     let listed = assert_ok(&listed_result);
     assert!(listed["entries"]
         .as_array()
@@ -94,6 +186,74 @@ fn external_read_tools_allow_directory_listing_and_search() {
 }
 
 #[test]
+fn external_allowed_root_respects_hidden_and_ignored_filters() {
+    let fx = malicious_fixture();
+    let parent = fx.outside_secret.parent().expect("外部目录");
+    fs::write(parent.join(".hidden-secret.txt"), "HIDDEN_TOKEN").expect("写入隐藏文件");
+    fs::create_dir_all(parent.join(".git")).expect("创建忽略目录");
+    fs::write(parent.join(".git/config"), "IGNORED_TOKEN").expect("写入忽略文件");
+    let ctx = ctx_with_external_root(&fx.root, parent);
+
+    let listed = assert_ok(&invoke(
+        &ctx,
+        "list_dir",
+        json!({"path": parent.to_string_lossy(), "include_hidden": false, "include_ignored": false}),
+    ))
+    .clone();
+    let names: Vec<&str> = listed["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .collect();
+    assert!(!names.contains(&".hidden-secret.txt"));
+    assert!(!names.contains(&".git"));
+
+    let files = assert_ok(&invoke(
+        &ctx,
+        "list_files",
+        json!({"path": parent.to_string_lossy(), "patterns": ["**/*"], "include_hidden": false, "include_ignored": false}),
+    ))
+    .clone();
+    assert!(files["files"].as_array().unwrap().iter().all(|file| {
+        let path = file["path"].as_str().unwrap_or("");
+        !path.contains(".hidden-secret.txt") && !path.contains("/.git/")
+    }));
+
+    for token in ["HIDDEN_TOKEN", "IGNORED_TOKEN"] {
+        let matches = assert_ok(&invoke(
+            &ctx,
+            "search_text",
+            json!({"path": parent.to_string_lossy(), "query": token, "include_hidden": false, "include_ignored": false}),
+        ))
+        .clone();
+        assert!(matches["matches"].as_array().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn explicitly_enabled_external_workdir_allows_read_only_diagnostics() {
+    let fx = malicious_fixture();
+    let external_dir = fx
+        .outside_secret
+        .parent()
+        .expect("外部目录")
+        .canonicalize()
+        .expect("规范化外部目录");
+    let ctx = ctx_with_external_root(&fx.root, &external_dir);
+    let result = invoke(
+        &ctx,
+        "exec_command",
+        json!({"cmd": "pwd", "workdir": external_dir.to_string_lossy()}),
+    );
+    let output = assert_ok(&result);
+    assert_eq!(
+        output["resolved_cwd"],
+        external_dir.to_string_lossy().to_string()
+    );
+}
+
+#[test]
 fn view_image_allows_explicit_external_read_only_path() {
     let fx = malicious_fixture();
     let image_path = fx
@@ -102,25 +262,22 @@ fn view_image_allows_explicit_external_read_only_path() {
         .expect("外部目录")
         .join("outside-probe.png");
     let png_1x1: &[u8] = &[
-        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0,
-        0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99,
-        248, 207, 192, 240, 31, 0, 5, 0, 1, 255, 137, 153, 61, 29, 0, 0, 0, 0, 73, 69,
-        78, 68, 174, 66, 96, 130,
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6,
+        0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207, 192, 240,
+        31, 0, 5, 0, 1, 255, 137, 153, 61, 29, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
     ];
     fs::write(&image_path, png_1x1).expect("写入测试图片");
+    let external_root = image_path.parent().expect("外部目录");
     let result = invoke(
-        &ctx_for(&fx.root),
+        &ctx_with_external_root(&fx.root, external_root),
         "view_image",
         json!({"path": image_path.to_string_lossy(), "output": "data_url"}),
     );
     let payload = assert_ok(&result);
-    let canonical_image_path = fs::canonicalize(&image_path).expect("规范化测试图片路径");
+    let returned_path = payload["path"].as_str().expect("返回图片路径");
     assert_eq!(
-        payload["path"],
-        canonical_image_path
-            .to_string_lossy()
-            .replace('\\', "/")
-            .trim_start_matches("//?/")
+        fs::canonicalize(returned_path).expect("规范化返回图片路径"),
+        fs::canonicalize(&image_path).expect("规范化测试图片路径")
     );
     assert!(payload["base64"].as_str().is_some());
 }
@@ -134,7 +291,15 @@ fn exec_command_rejects_workdir_escape_via_policy() {
 fn exec_command_allows_workspace_child_process_during_transition() {
     let fx = tiny_js_fixture();
     let ctx = ctx_for(&fx.root);
-    let out = invoke(&ctx, "exec_command", json!({"cmd": "python --version"}));
+    let program = ["python3", "python", "node"]
+        .into_iter()
+        .find(|name| which::which(name).is_ok())
+        .expect("需要一个受支持的测试解释器");
+    let out = invoke(
+        &ctx,
+        "exec_command",
+        json!({"cmd": format!("{program} --version")}),
+    );
     let result = assert_ok(&out);
     assert_eq!(result["filesystem_scope"], "workspace");
     assert_eq!(result["sandbox_enforced"], false);
@@ -188,7 +353,10 @@ fn deleting_readme_requires_explicit_confirmation() {
             "patch": "--- a/README.md\n+++ /dev/null\n@@\n-project\n"
         }),
     );
-    assert_eq!(out["error"]["code"], "DANGEROUS_OPERATION_REQUIRES_CONFIRMATION");
+    assert_eq!(
+        out["error"]["code"],
+        "DANGEROUS_OPERATION_REQUIRES_CONFIRMATION"
+    );
 }
 
 #[test]
@@ -351,12 +519,14 @@ fn apply_patch_rejects_absolute_path_target() {
 #[test]
 fn exec_command_allows_python_c_but_rejects_shell_escape() {
     let policy = coding_tools_mcp_desktop_lib::tools::policy::PolicySettings::default();
-    assert!(coding_tools_mcp_desktop_lib::tools::policy::validate_tool_arguments(
-        "exec_command",
-        &json!({"cmd": "python -c \"import os; print(os.getcwd())\""}),
-        &policy,
-    )
-    .is_ok());
+    assert!(
+        coding_tools_mcp_desktop_lib::tools::policy::validate_tool_arguments(
+            "exec_command",
+            &json!({"cmd": "python -c \"import os; print(os.getcwd())\""}),
+            &policy,
+        )
+        .is_ok()
+    );
     assert_policy_rejects(
         "exec_command",
         json!({"cmd": "python -c \"print(1)\" && rm -rf /"}),

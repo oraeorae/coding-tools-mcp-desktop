@@ -6,6 +6,7 @@ use crate::error::{AppError, AppResult};
 
 /// When true, CloseRequested may destroy the window / exit the process.
 static ALLOW_EXIT: AtomicBool = AtomicBool::new(false);
+static EXIT_PREPARED: AtomicBool = AtomicBool::new(false);
 
 /// Intercept user close (show confirm / keep running) unless quitting or UI recreate.
 pub fn should_intercept_close() -> bool {
@@ -46,10 +47,35 @@ pub fn show_main_window(app: AppHandle) -> AppResult<()> {
 #[tauri::command]
 pub fn quit_app(app: AppHandle) -> AppResult<()> {
     arm_allow_exit();
+    if let Err(error) = prepare_for_exit(&app) {
+        eprintln!("failed to prepare application exit: {error}");
+    }
     app.exit(0);
     Ok(())
 }
 
 pub fn arm_allow_exit() {
     ALLOW_EXIT.store(true, Ordering::SeqCst);
+}
+
+pub fn is_exit_prepared() -> bool {
+    EXIT_PREPARED.load(Ordering::SeqCst)
+}
+
+/// Capture the restart snapshot and stop all in-process listeners exactly once.
+/// Hiding the window does not call this function, so background mode is kept.
+pub fn prepare_for_exit(app: &AppHandle) -> AppResult<()> {
+    if EXIT_PREPARED.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let capture_result = crate::startup_restore::capture_running_services(app);
+    let shutdown_result = app
+        .state::<crate::app_state::AppState>()
+        .with_runtime(|runtime| {
+            runtime.shutdown_all();
+            Ok(())
+        });
+
+    capture_result.and(shutdown_result)
 }

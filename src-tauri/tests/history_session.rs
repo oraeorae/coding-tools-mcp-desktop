@@ -529,18 +529,20 @@ fn workspace_root_and_history_paths_cannot_escape_workspace() {
         json!({"workspace_root": ".", "session_key": "relative-root", "initial_user_input": "x"}),
     );
     assert_eq!(relative["current_number"], 1);
-    let outside = invoke(
+    let stale_workspace_root = invoke(
         &ctx,
-        "history_session_validate",
+        "history_session_bootstrap",
         json!({
             "workspace_root": workspace.path().parent().unwrap().to_string_lossy(),
-            "repair": false
+            "session_key": "stale-workspace-root",
+            "initial_user_input": "x"
         }),
     );
-    assert_eq!(
-        assert_err(&outside)["error"]["code"],
-        "PATH_OUTSIDE_WORKSPACE"
-    );
+    assert_eq!(stale_workspace_root["ok"], true);
+    assert!(stale_workspace_root["current_path"]
+        .as_str()
+        .expect("current_path")
+        .starts_with("docs/history-session/"));
     let traversal = invoke(
         &ctx,
         "history_session_read",

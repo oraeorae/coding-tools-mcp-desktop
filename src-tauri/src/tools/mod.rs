@@ -16,6 +16,7 @@ mod session_archive;
 pub mod workspace;
 
 pub use context::{SharedToolContext, ToolContext};
+pub use crate::workspace::AuthConfig;
 /// 工具执行仍唯一收敛到 call_tool；传输入口用 call_tool_with_audit 包装正常调用，
 /// 提前拒绝用 record_tool_rejection_with_audit 补记，禁止 MCP/Actions 各自复制审计逻辑。
 pub use dispatch::{call_tool, call_tool_with_audit, record_tool_rejection_with_audit};

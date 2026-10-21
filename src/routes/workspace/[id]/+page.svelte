@@ -9,6 +9,7 @@
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import HealthPanel from "$lib/components/HealthPanel.svelte";
   import LogViewer from "$lib/components/LogViewer.svelte";
+  import ResearchDashboard from "$lib/components/ResearchDashboard.svelte";
   import RuntimePolicyForm, {
     type RuntimePolicyDraft,
   } from "$lib/components/RuntimePolicyForm.svelte";
@@ -59,7 +60,7 @@
     type WorkspaceProfile,
   } from "$lib/types";
 
-  type ServiceTab = "mcp" | "actions";
+  type ServiceTab = "mcp" | "actions" | "research";
   type SubTab = "config" | "logs" | "health";
 
   let profile = $state<WorkspaceProfile | null>(null);
@@ -421,6 +422,7 @@
         allowed_commands: draft.allowedCommands,
         workspace_local_entries: draft.workspaceLocalEntries,
         workspace_script_extensions: draft.workspaceScriptExtensions,
+        allowed_roots: draft.allowedRoots,
       },
     };
     await updateWorkspace(next);
@@ -575,18 +577,20 @@
         </button>
       </div>
 
-      <div class="mt-4">
-        <WorkspaceMetaForm
-          name={profile.name}
-          path={profile.path}
-          onSave={saveWorkspaceName}
-          onUpdatePath={saveWorkspacePath}
-        />
-      </div>
+      {#if activeService !== "research"}
+        <div class="mt-4">
+          <WorkspaceMetaForm
+            name={profile.name}
+            path={profile.path}
+            onSave={saveWorkspaceName}
+            onUpdatePath={saveWorkspacePath}
+          />
+        </div>
 
-      <div class="mt-4">
-        <ChatGptSessionPrompt />
-      </div>
+        <div class="mt-4">
+          <ChatGptSessionPrompt />
+        </div>
+      {/if}
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
         <button
@@ -609,11 +613,23 @@
           <span class="font-medium">Actions</span>
           <span class="text-[var(--color-text-muted)]">{stateLabel(actionsStatus)}</span>
         </button>
+        <button
+          type="button"
+          class="tx-status-pill"
+          class:active={activeService === "research"}
+          onclick={() => (activeService = "research")}
+        >
+          <span class="h-2 w-2 rounded-full bg-[var(--color-accent)]" aria-hidden="true"></span>
+          <span class="font-medium">每日研究</span>
+          <span class="text-[var(--color-text-muted)]">结论与证据</span>
+        </button>
       </div>
     </header>
 
     <div class="page-body">
-      <div class="mt-4"><BrowserPanel workspaceId={profile.id} /></div>
+      {#if activeService !== "research"}
+        <div class="mt-4"><BrowserPanel workspaceId={profile.id} /></div>
+      {/if}
 
       {#if activeService === "mcp"}
         <div class="mt-4 flex flex-col gap-3">
@@ -678,6 +694,7 @@
                 allowedCommands={profile.runtime.allowed_commands ?? ""}
                 workspaceLocalEntries={profile.runtime.workspace_local_entries ?? true}
                 workspaceScriptExtensions={profile.runtime.workspace_script_extensions ?? ".exe,.bat,.cmd,.ps1"}
+                allowedRoots={profile.runtime.allowed_roots ?? []}
                 onSave={saveMcpPolicy}
               />
             </div>
@@ -698,7 +715,7 @@
             <HealthPanel workspaceId={workspaceId!} />
           </div>
         {/if}
-      {:else}
+      {:else if activeService === "actions"}
         <div class="mt-4 flex flex-col gap-3">
           <ServicePanel
             title="Actions"
@@ -778,6 +795,10 @@
             <HealthPanel workspaceId={workspaceId!} />
           </div>
         {/if}
+      {:else}
+        <div class="mt-4">
+          <ResearchDashboard workspaceId={profile.id} />
+        </div>
       {/if}
     </div>
 

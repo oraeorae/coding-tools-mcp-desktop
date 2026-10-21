@@ -838,6 +838,24 @@ button {
   margin-top: 20px;
 }
 
+@media (max-width: 720px) {
+  .tx-sidebar {
+    display: none;
+  }
+
+  .tx-main {
+    width: 100%;
+  }
+
+  .page-header {
+    padding: 16px;
+  }
+
+  .page-body {
+    padding-inline: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -38,6 +38,7 @@ struct RuntimeEntry {
     phase: RuntimePhase,
     shutdown: Option<mcp::ShutdownSender>,
     handle: Option<JoinHandle<()>>,
+    port: u16,
     error_message: Option<String>,
     started_at: Option<std::time::Instant>,
     missing_port_checks: u8,
@@ -106,11 +107,34 @@ impl RuntimeSupervisor {
                 phase: RuntimePhase::Error,
                 shutdown: None,
                 handle: None,
+                port: profile.runtime.local_port,
                 error_message: Some(message),
                 started_at: None,
                 missing_port_checks: 0,
             },
         );
+    }
+
+    /// Stop every embedded listener before the desktop process exits.
+    ///
+    /// Signal all listeners first, then wait for their ports to be released so
+    /// one slow listener cannot delay the shutdown signal for the others.
+    pub fn shutdown_all(&mut self) {
+        let entries = std::mem::take(&mut self.entries);
+        let mut handles = Vec::with_capacity(entries.len());
+
+        for (_, mut entry) in entries {
+            if let Some(shutdown) = entry.shutdown.take() {
+                let _ = shutdown.send(());
+            }
+            if let Some(handle) = entry.handle.take() {
+                handles.push((handle, entry.port));
+            }
+        }
+
+        for (handle, port) in handles {
+            crate::runtime::port::await_listener_shutdown_blocking(Some(handle), port);
+        }
     }
 
     pub fn active_tunnel_service_keys(&self) -> HashSet<(String, TunnelServiceKind)> {
@@ -232,19 +256,20 @@ impl RuntimeSupervisor {
             )));
         }
 
+        let port = port_for(profile, kind);
         self.entries.insert(
             key.clone(),
             RuntimeEntry {
                 phase: RuntimePhase::Starting,
                 shutdown: None,
                 handle: None,
+                port,
                 error_message: None,
                 started_at: Some(std::time::Instant::now()),
                 missing_port_checks: 0,
             },
         );
 
-        let port = port_for(profile, kind);
         if let Some(pid) = platform().find_pid_listening_on_port(port)? {
             if is_own_process(pid) {
                 wait_for_port_free_blocking(port, Duration::from_secs(3));
@@ -374,6 +399,7 @@ impl RuntimeSupervisor {
                         phase: RuntimePhase::Running,
                         shutdown: Some(shutdown),
                         handle: Some(handle),
+                        port,
                         error_message: None,
                         started_at,
                         missing_port_checks: 0,
@@ -396,6 +422,7 @@ impl RuntimeSupervisor {
                         phase: RuntimePhase::Error,
                         shutdown: None,
                         handle: None,
+                        port,
                         error_message: Some(err.to_string()),
                         started_at: None,
                         missing_port_checks: 0,
@@ -581,6 +608,7 @@ mod tests {
             phase,
             shutdown: None,
             handle: None,
+            port: 0,
             error_message: None,
             started_at,
             missing_port_checks: 0,
@@ -631,5 +659,74 @@ mod tests {
         let status = supervisor.mcp_status(&profile);
         assert_eq!(status.state, "error");
         assert!(status.local_message.contains("上游初始化失败"));
+    }
+
+    #[test]
+    fn shutdown_all_signals_every_listener_and_clears_entries() {
+        let mut supervisor = RuntimeSupervisor::default();
+        let (mcp_shutdown, mut mcp_receiver) = tokio::sync::oneshot::channel();
+        let (actions_shutdown, mut actions_receiver) = tokio::sync::oneshot::channel();
+
+        supervisor.entries.insert(
+            ("workspace".into(), ServiceKind::Mcp),
+            RuntimeEntry {
+                phase: RuntimePhase::Running,
+                shutdown: Some(mcp_shutdown),
+                handle: None,
+                port: 0,
+                error_message: None,
+                started_at: Some(std::time::Instant::now()),
+                missing_port_checks: 0,
+            },
+        );
+        supervisor.entries.insert(
+            ("workspace".into(), ServiceKind::Actions),
+            RuntimeEntry {
+                phase: RuntimePhase::Running,
+                shutdown: Some(actions_shutdown),
+                handle: None,
+                port: 0,
+                error_message: None,
+                started_at: Some(std::time::Instant::now()),
+                missing_port_checks: 0,
+            },
+        );
+
+        supervisor.shutdown_all();
+
+        assert!(supervisor.entries.is_empty());
+        assert_eq!(mcp_receiver.try_recv(), Ok(()));
+        assert_eq!(actions_receiver.try_recv(), Ok(()));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_all_releases_a_listener_port() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let (shutdown, shutdown_receiver) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _ = shutdown_receiver.await;
+            drop(listener);
+        });
+        let mut supervisor = RuntimeSupervisor::default();
+        supervisor.entries.insert(
+            ("workspace".into(), ServiceKind::Actions),
+            RuntimeEntry {
+                phase: RuntimePhase::Running,
+                shutdown: Some(shutdown),
+                handle: Some(tauri::async_runtime::JoinHandle::Tokio(handle)),
+                port,
+                error_message: None,
+                started_at: Some(std::time::Instant::now()),
+                missing_port_checks: 0,
+            },
+        );
+
+        supervisor.shutdown_all();
+
+        assert!(supervisor.entries.is_empty());
+        std::net::TcpListener::bind(("127.0.0.1", port)).expect("released listener port");
     }
 }

@@ -95,7 +95,6 @@ pub fn read_file(ws: &Workspace, args: &Value) -> Result<Value, WorkspaceError> 
         "warnings": warnings
     })))
 }
-
 /// Files above this size take the bounded-memory streaming path: output
 /// content matches the in-memory path up to `max_bytes` / line range, but the
 /// scanner stops once selection is complete so multi-GB files do not thrash
@@ -294,7 +293,6 @@ fn consume_stream_lines(
         }
     }
 }
-
 /// Append `src` to `dst` but never let `dst` exceed `max_bytes`; mark
 /// `overflow` when bytes are discarded, mirroring whole-selection truncation.
 fn append_capped(dst: &mut Vec<u8>, src: &[u8], max_bytes: usize, overflow: &mut bool) {

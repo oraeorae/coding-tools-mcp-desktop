@@ -33,6 +33,12 @@
 ### [设计系统](./design-system.md)
 2026 开发者工具 UI 审美、色彩、字体、交互规范
 
+### 每日研究看板
+
+- [组件目录](./ui/component-catalog.json) — 复用组件、状态与新增边界
+- [页面结构](./ui/page-structure.json) — 桌面双栏和移动端单栏任务流
+- [视觉验收](../artifacts/ui-review/daily-research-dashboard/visual-review.json) — 桌面与移动端截图评分
+
 ## 参考实现
 
 旧版 Python 实现完整归档在 `old/` 目录：

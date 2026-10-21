@@ -11,6 +11,13 @@ use crate::commands::runtime::{start_actions_service, start_mcp_service};
 const PLAN_FILE: &str = "local-update-restore.json";
 const RESULT_FILE: &str = "local-update-restore-result.json";
 
+pub fn has_pending_restore() -> bool {
+    crate::platform::platform()
+        .app_config_dir()
+        .map(|path| path.join("data").join(PLAN_FILE).exists())
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RestorePlan {

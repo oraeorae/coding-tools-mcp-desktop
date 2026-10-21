@@ -32,23 +32,15 @@ impl Drop for HistoryLock {
 
 pub fn resolve_history_dir(
     workspace: &Workspace,
-    workspace_root: Option<&str>,
+    _workspace_root: Option<&str>,
     history_dir: Option<&str>,
 ) -> WorkspaceResult<PathBuf> {
-    if let Some(requested_root) = workspace_root {
-        let requested_path = Path::new(requested_root.trim());
-        let candidate = if requested_path.is_absolute() {
-            requested_path.to_path_buf()
-        } else {
-            workspace.root().join(requested_path)
-        };
-        let requested = candidate
-            .canonicalize()
-            .map_err(|_| WorkspaceError::invalid_argument("workspace_root does not exist"))?;
-        if requested != workspace.root() {
-            return Err(WorkspaceError::path_outside_workspace());
-        }
-    }
+    // The MCP-bound Workspace is the only trusted write root.  `workspace_root`
+    // is retained as a compatibility argument, but must not override (or make
+    // archive initialization depend on) that bound root.  In particular, a
+    // stale client-side path can refer to another project while the server's
+    // actual workspace is still valid.  The history directory below is always
+    // resolved relative to `workspace.root()` and remains fully sandboxed.
 
     let raw = history_dir.unwrap_or(DEFAULT_HISTORY_DIR).trim();
     if raw.is_empty() || workspace.reject_unsafe_text(raw).is_err() {

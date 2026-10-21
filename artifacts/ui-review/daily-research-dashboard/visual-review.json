@@ -1,0 +1,48 @@
+{
+  "reviewedAt": "2026-09-28T00:00:00+08:00",
+  "screenshots": [
+    "desktop-1440x900.png",
+    "mobile-390x844.png"
+  ],
+  "targetScore": 8.5,
+  "dimensions": {
+    "informationHierarchy": {
+      "score": 9.2,
+      "evidence": "日期、总览、主题列表、结论和证据按主任务顺序排列；状态文字与颜色同时编码。"
+    },
+    "layoutAndWhitespace": {
+      "score": 9.0,
+      "evidence": "桌面采用列表与检查器双栏，移动端重排为单栏；两个视口均无水平溢出。"
+    },
+    "visualConsistency": {
+      "score": 8.7,
+      "evidence": "颜色、圆角、字号与现有 Coding Tools MCP 深色界面一致。"
+    },
+    "contentDensity": {
+      "score": 9.1,
+      "evidence": "首屏同时呈现日级概览和主题级结论，证据详情按组展开且保持可扫读。"
+    },
+    "componentRestraint": {
+      "score": 9.2,
+      "evidence": "仅使用日期选择、状态标签、主题列表和证据卡片，没有装饰性图表或冗余控件。"
+    },
+    "brandRecognition": {
+      "score": 8.4,
+      "evidence": "延续应用的工具型深色视觉，重点突出可核验来源与研究状态。"
+    },
+    "responsiveBehavior": {
+      "score": 8.7,
+      "evidence": "390x844 下隐藏侧栏并保持日期、状态和主题选择可用；结论与证据按自然滚动顺序位于下方。"
+    }
+  },
+  "weightedScore": 8.9,
+  "blockingFailures": [],
+  "issues": [
+    {
+      "severity": "low",
+      "description": "移动端首屏高度有限，选中主题的完整证据需要继续向下滚动。",
+      "decision": "保留。日期和主题选择优先，证据紧随其后，任务顺序清晰。"
+    }
+  ],
+  "passed": true
+}

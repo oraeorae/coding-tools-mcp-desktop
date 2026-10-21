@@ -1,0 +1,35 @@
+{
+  "feature": "daily-research-dashboard",
+  "generatedAt": "2026-09-27",
+  "existing": [
+    {
+      "name": "Tabs",
+      "path": "src/lib/components/Tabs.svelte",
+      "use": "工作区内服务与研究视图切换"
+    },
+    {
+      "name": "EmptyState",
+      "path": "src/lib/components/EmptyState.svelte",
+      "use": "无历史、无当日主题时的解释性空态"
+    },
+    {
+      "name": "Badge",
+      "path": "src/lib/components/Badge.svelte",
+      "use": "保持现有状态语言；研究结论状态使用文字与颜色双重表达"
+    }
+  ],
+  "new": [
+    {
+      "name": "ResearchDashboard",
+      "path": "src/lib/components/ResearchDashboard.svelte",
+      "use": "日期导航、主题列表、结论与证据检查器"
+    }
+  ],
+  "rules": [
+    "只读聚合，不在看板内修改原始历史",
+    "桌面采用主题列表与证据检查器并列，移动端改为单列",
+    "状态不只靠颜色表达",
+    "证据必须显示类型、时间和项目内原始路径",
+    "不把存在测试记录自动等同于可实盘"
+  ]
+}

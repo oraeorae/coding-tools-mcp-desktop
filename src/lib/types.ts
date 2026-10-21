@@ -30,6 +30,8 @@ export interface RuntimeConfig {
   allowed_commands?: string;
   workspace_local_entries?: boolean;
   workspace_script_extensions?: string;
+  allowed_roots?: string[];
+  allow_external_paths?: boolean;
   upstream_mcps?: UpstreamMcpConfig[];
 }
 

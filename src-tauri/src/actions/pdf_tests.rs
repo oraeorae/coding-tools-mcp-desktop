@@ -83,7 +83,16 @@ fn preserves_read_path_boundary() {
     std::fs::write(&path, sample_pdf()).unwrap();
     std::os::unix::fs::symlink(&path, dir.path().join("escape.pdf")).unwrap();
     assert!(read_pdf(&ws, "escape.pdf").is_err());
-    assert!(read_pdf(&ws, path.to_str().unwrap()).is_ok());
+    assert!(read_pdf(&ws, path.to_str().unwrap()).is_err());
+
+    let allowed = Workspace::with_read_policy(
+        dir.path().to_path_buf(),
+        &[outside.path().to_string_lossy().to_string()],
+        true,
+    )
+    .unwrap();
+    assert!(read_pdf(&allowed, "escape.pdf").is_ok());
+    assert!(read_pdf(&allowed, path.to_str().unwrap()).is_ok());
 }
 
 #[tokio::test]

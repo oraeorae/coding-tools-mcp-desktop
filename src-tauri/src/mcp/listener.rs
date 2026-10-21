@@ -59,7 +59,6 @@ pub fn spawn_listener(
     upstream: Arc<UpstreamMcpManager>,
 ) -> Result<(ShutdownSender, tauri::async_runtime::JoinHandle<()>), String> {
     let workspace_display = workspace_path.display().to_string();
-    let workspace = Workspace::new(workspace_path).map_err(|e| e.message())?;
     if matches!(
         crate::tools::registry::normalize_tool_profile(&runtime.tool_profile),
         "read-only" | "compat-readonly-all"
@@ -73,6 +72,16 @@ pub fn spawn_listener(
     // Bind before starting local children. A port collision must not leave an
     // upstream process running after this MCP start attempt failed.
     let listener = bind_listener(port)?;
+    // Existing profiles with explicit allowed_roots were already opting into
+    // external read access. Treat that configuration as the compatibility
+    // switch, while also honoring the new explicit boolean for new profiles.
+    let allow_external_paths = runtime.allow_external_paths || !runtime.allowed_roots.is_empty();
+    let workspace = Workspace::with_read_policy(
+        workspace_path,
+        &runtime.allowed_roots,
+        allow_external_paths,
+    )
+        .map_err(|e| e.message())?;
     let policy = PolicySettings::from_runtime(&runtime);
     // 监听器创建 SharedState 时注入稳定 workspace_id；服务端后续只持有共享 Context，无法再从
     // 单条 JSON-RPC 请求可靠恢复工作区归属。
@@ -577,7 +586,14 @@ mod tests {
         use super::*;
         let root = tempfile::tempdir().unwrap();
         let harness = tempfile::tempdir().unwrap();
-        let mcp = Arc::new(crate::tools::ToolContext::for_test(root.path().into(), harness.path().into()).unwrap());
+        let tools = Arc::new(
+            crate::tools::ToolContext::for_test(root.path().into(), harness.path().into())
+                .unwrap(),
+        );
+        let mcp = Arc::new(crate::mcp::server::McpState {
+            tools,
+            upstream: Arc::new(crate::mcp::upstream::UpstreamMcpManager::empty()),
+        });
         let state = ListenerState {
             mcp,
             history_gate: Arc::new(Semaphore::new(1)),

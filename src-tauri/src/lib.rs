@@ -18,6 +18,7 @@ mod request_log;
 mod runtime;
 mod secret;
 mod settings;
+mod startup_restore;
 pub mod tools;
 mod tunnel;
 mod update;
@@ -31,14 +32,15 @@ use commands::{
     query_audit_records,
     get_actions_runtime_status, get_app_settings, get_download_config, get_frp_snippet,
     get_last_workspace_id, get_proxy, get_runtime_status, get_shared_secret, get_webview_memory_sample,
+    get_startup_restore_enabled,
     get_workspace_secret, hide_to_tray, install_software, list_frp_profiles, list_software,
     clear_request_errors, list_workspaces, open_url, open_workspace_directory, quit_app,
-    read_request_errors, read_workspace_logs,
+    read_request_errors, read_research_history, read_workspace_logs,
     open_http_access_log_directory, query_http_access_logs, recreate_ui_webview,
     regenerate_shared_secret, regenerate_workspace_secret,
     restart_actions_runtime, restart_runtime, restart_tunnel, run_health_checks, save_frp_profile,
     set_audit_config, set_download_config, set_last_workspace, set_proxy, set_shared_secret,
-    set_workspace_secret,
+    set_workspace_secret, set_startup_restore_enabled,
     show_main_window, start_actions_runtime, start_runtime, start_tunnel, stop_actions_runtime,
     stop_runtime, stop_tunnel, test_tunnel, uninstall_software, update_workspace,
 };
@@ -137,6 +139,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             }
             "quit" => {
                 commands::window_chrome::arm_allow_exit();
+                if let Err(error) = commands::window_chrome::prepare_for_exit(app) {
+                    eprintln!("failed to prepare tray exit: {error}");
+                }
                 app.exit(0);
             }
             _ => {}
@@ -169,12 +174,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(AppState::new().expect("failed to load app state"));
+            let local_update_pending = local_update::has_pending_restore();
             local_update::schedule_restore(app.handle().clone());
             // 上一次异常退出可能留下仍在运行的隧道子进程；先按镜像路径清理，
             // 避免它们继续持有工作区目录并触发系统授权弹窗。
             tauri::async_runtime::spawn(async {
                 let _ = tunnel::terminate_recorded_tunnel_children_on_startup().await;
             });
+            startup_restore::schedule_restore(app.handle().clone(), local_update_pending);
             // Recover FRP clients that stay alive while the public proxy dies
             // (common after install/restart network blips).
             tunnel::ensure_frp_health_loop();
@@ -224,6 +231,7 @@ pub fn run() {
             read_workspace_logs,
             read_request_errors,
             clear_request_errors,
+            read_research_history,
             list_frp_profiles,
             save_frp_profile,
             delete_frp_profile,
@@ -239,6 +247,8 @@ pub fn run() {
             set_download_config,
             get_proxy,
             set_proxy,
+            get_startup_restore_enabled,
+            set_startup_restore_enabled,
             get_webview_memory_sample,
             recreate_ui_webview,
             hide_to_tray,
@@ -254,6 +264,8 @@ pub fn run() {
                 // and take MCP/FRP down with it (0.1.30 regression).
                 if commands::ui_memory::should_prevent_exit() {
                     api.prevent_exit();
+                } else if let Err(error) = commands::window_chrome::prepare_for_exit(app_handle) {
+                    eprintln!("failed to prepare application exit: {error}");
                 }
             }
             tauri::RunEvent::Exit => {

@@ -142,10 +142,24 @@ pub type WorkspaceResult<T> = Result<T, WorkspaceError>;
 #[derive(Debug, Clone)]
 pub struct Workspace {
     root: PathBuf,
+    allowed_roots: Vec<PathBuf>,
+    allow_external_paths: bool,
 }
 
 impl Workspace {
     pub fn new(root: PathBuf) -> WorkspaceResult<Self> {
+        Self::with_allowed_roots(root, &[])
+    }
+
+    pub fn with_allowed_roots(root: PathBuf, allowed_roots: &[String]) -> WorkspaceResult<Self> {
+        Self::with_read_policy(root, allowed_roots, false)
+    }
+
+    pub fn with_read_policy(
+        root: PathBuf,
+        allowed_roots: &[String],
+        allow_external_paths: bool,
+    ) -> WorkspaceResult<Self> {
         let root = root
             .canonicalize()
             .map_err(|_| WorkspaceError::invalid_argument("Workspace root must exist"))?;
@@ -154,7 +168,31 @@ impl Workspace {
                 "Workspace root must be a directory",
             ));
         }
-        Ok(Self { root })
+        let mut resolved_roots = Vec::new();
+        for raw_root in allowed_roots {
+            let candidate = Path::new(raw_root);
+            if !candidate.is_absolute() {
+                return Err(WorkspaceError::invalid_argument(
+                    "Allowed roots must be absolute paths",
+                ));
+            }
+            let resolved = candidate.canonicalize().map_err(|_| {
+                WorkspaceError::invalid_argument(format!("Allowed root must exist: {raw_root}"))
+            })?;
+            if !resolved.is_dir() {
+                return Err(WorkspaceError::invalid_argument(format!(
+                    "Allowed root must be a directory: {raw_root}"
+                )));
+            }
+            if resolved != root && !resolved_roots.iter().any(|item| item == &resolved) {
+                resolved_roots.push(resolved);
+            }
+        }
+        Ok(Self {
+            root,
+            allowed_roots: resolved_roots,
+            allow_external_paths,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -192,14 +230,24 @@ impl Workspace {
     }
 
     pub fn resolve_existing(&self, raw_path: &str) -> WorkspaceResult<ResolvedPath> {
+        if Path::new(raw_path).is_absolute() && self.allow_external_paths {
+            return self.resolve_read_path(raw_path);
+        }
         self.resolve_existing_at(&self.root, raw_path)
     }
 
-    /// 解析只读路径。显式的绝对路径和 `..` 路径允许指向 Workspace 外部，
-    /// 但不会被任何写入工具复用。
+    pub fn allows_external_paths(&self) -> bool {
+        self.allow_external_paths
+    }
+
+    /// 解析只读路径。启用显式外部路径后，绝对路径和 `..` 仍必须落在
+    /// Workspace 或配置的 `allowed_roots` 内；写入工具不会复用此入口。
     pub fn resolve_read_path(&self, raw_path: &str) -> WorkspaceResult<ResolvedPath> {
         let raw = if raw_path.is_empty() { "." } else { raw_path };
         self.validate_read_text(raw)?;
+        if !self.allow_external_paths {
+            self.reject_unsafe_text(raw)?;
+        }
         let input = Path::new(raw);
         let candidate = if input.is_absolute() {
             input.to_path_buf()
@@ -207,18 +255,17 @@ impl Workspace {
             self.root
                 .join(raw.replace('/', std::path::MAIN_SEPARATOR_STR))
         };
+
         let resolved = candidate
             .canonicalize()
             .map_err(|_| WorkspaceError::not_found(format!("Path not found: {raw}")))?;
-        let explicit_external = input.is_absolute()
-            || input
-                .components()
-                .any(|part| matches!(part, Component::ParentDir));
-        if !explicit_external && candidate.starts_with(&self.root) {
-            self.ensure_inside_workspace(&candidate, &resolved)?;
-        }
+        self.ensure_inside_read_roots(&candidate, &resolved)?;
         Ok(ResolvedPath {
-            display: relative_display(&self.root, &resolved),
+            display: if self.allow_external_paths {
+                candidate.to_string_lossy().replace('\\', "/")
+            } else {
+                relative_display(&self.root, &resolved)
+            },
             path: resolved,
             existed: true,
         })
@@ -236,7 +283,7 @@ impl Workspace {
         let resolved = candidate
             .canonicalize()
             .map_err(|_| WorkspaceError::not_found(format!("Path not found: {raw}")))?;
-        self.ensure_inside_workspace(&candidate, &resolved)?;
+        self.ensure_inside_read_roots(&candidate, &resolved)?;
         Ok(ResolvedPath {
             display: relative_display(&self.root, &resolved),
             path: resolved,
@@ -326,6 +373,21 @@ impl Workspace {
         Ok(())
     }
 
+    fn ensure_inside_read_roots(&self, candidate: &Path, resolved: &Path) -> WorkspaceResult<()> {
+        if resolved.starts_with(&self.root)
+            || self
+                .allowed_roots
+                .iter()
+                .any(|allowed| resolved.starts_with(allowed))
+        {
+            return Ok(());
+        }
+        if candidate.is_symlink() {
+            return Err(WorkspaceError::symlink_escape());
+        }
+        Err(WorkspaceError::path_outside_workspace())
+    }
+
     pub fn reject_write_symlink(&self, raw_path: &str) -> WorkspaceResult<()> {
         self.reject_unsafe_text(raw_path)?;
         let candidate = self
@@ -364,46 +426,37 @@ impl Workspace {
         include_hidden: bool,
         include_ignored: bool,
     ) -> bool {
-        match path.strip_prefix(&self.root) {
-            Ok(scan_path) => {
-                let parts: Vec<String> = scan_path
-                    .components()
-                    .filter_map(|part| match part {
-                        Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
-                        _ => None,
-                    })
-                    .collect();
-                if !include_hidden {
-                    for part in &parts {
-                        if part.starts_with('.') && part != "." {
-                            return true;
-                        }
-                    }
+        let scan_root = std::iter::once(&self.root)
+            .chain(self.allowed_roots.iter())
+            .filter(|root| path.starts_with(root))
+            .max_by_key(|root| root.components().count());
+        let Some(scan_path) = scan_root.and_then(|root| path.strip_prefix(root).ok()) else {
+            // 解析层正常情况下不会把根目录外的路径传到这里；保守过滤可避免
+            // 调用方遗漏解析校验时意外枚举未批准目录。
+            return true;
+        };
+        let parts: Vec<String> = scan_path
+            .components()
+            .filter_map(|part| match part {
+                Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect();
+        if !include_hidden {
+            for part in &parts {
+                if part.starts_with('.') && part != "." {
+                    return true;
                 }
-                if !include_ignored {
-                    for part in &parts {
-                        if DEFAULT_EXCLUDED_NAMES.contains(&part.as_str()) {
-                            return true;
-                        }
-                    }
-                }
-                false
-            }
-            Err(_) => {
-                // Workspace 外的显式只读路径：不要用「隐藏目录」规则误伤 Windows
-                // 临时目录，但仍按组件名剪掉 node_modules/target 等体积暴涨目录，
-                // 避免绝对路径 list/search 把整盘扫穿。
-                if include_ignored {
-                    return false;
-                }
-                path.components().any(|part| match part {
-                    Component::Normal(name) => {
-                        DEFAULT_EXCLUDED_NAMES.contains(&name.to_string_lossy().as_ref())
-                    }
-                    _ => false,
-                })
             }
         }
+        if !include_ignored {
+            for part in &parts {
+                if DEFAULT_EXCLUDED_NAMES.contains(&part.as_str()) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn is_safe_existing_path(&self, path: &Path) -> bool {

@@ -1,0 +1,21 @@
+{
+  "reviewedAt": "2026-09-28T00:00:00+08:00",
+  "passed": true,
+  "states": {
+    "loading": "加载开始即设置 loading=true，并通过 aria-live 显示正在读取项目历史。",
+    "empty": "无历史主题时显示明确空态及生成历史检查点的下一步说明。",
+    "errorAndPermission": "工作区不存在、路径越界或读取失败均进入 role=alert 错误态，并提供重新读取按钮。",
+    "emptyDay": "选定日期没有主题时显示当天没有研究记录。",
+    "partialData": "单文件不可读、过大或符号链接逃逸时跳过该文件并展示 warning，不让整页产生误导性成功。"
+  },
+  "accessibility": {
+    "keyboard": "日期 select、前后日期、刷新、重试、主题行和 details 均为原生可聚焦控件。",
+    "semantics": "主标题、结论、证据、限制均有关联标题；主题选择使用 aria-pressed；错误使用 role=alert。",
+    "nonColorStatus": "四类状态同时提供中文文字标签，不仅依赖颜色。",
+    "motion": "prefers-reduced-motion 下关闭刷新旋转动画。"
+  },
+  "responsive": {
+    "desktop": "1440x900 双栏列表-检查器结构，无水平溢出。",
+    "mobile": "390x844 重排为单栏，44px 关键控件高度，无水平溢出。"
+  }
+}

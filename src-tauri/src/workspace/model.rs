@@ -71,6 +71,14 @@ pub struct RuntimeConfig {
     pub workspace_local_entries: bool,
     #[serde(default = "default_workspace_script_extensions")]
     pub workspace_script_extensions: String,
+    /// Additional absolute directories that MCP may read through approved symlinks.
+    #[serde(default)]
+    pub allowed_roots: Vec<String>,
+    /// Opt-in absolute/parent-path syntax for read/diagnostic access. Resolved
+    /// targets must still be inside the workspace or an explicit allowed root.
+    /// Writes and mutation commands remain subject to the workspace boundary.
+    #[serde(default)]
+    pub allow_external_paths: bool,
     /// Local MCP servers started by this workspace's public MCP runtime.
     /// They are never reachable directly from the public network.
     #[serde(default)]
@@ -288,6 +296,8 @@ impl Default for RuntimeConfig {
             allowed_commands: default_allowed_commands(),
             workspace_local_entries: default_workspace_local_entries(),
             workspace_script_extensions: default_workspace_script_extensions(),
+            allowed_roots: Vec::new(),
+            allow_external_paths: false,
             upstream_mcps: Vec::new(),
         }
     }

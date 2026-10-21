@@ -35,7 +35,7 @@ ChatGPT tools/call
   -> wrap_mcp_tool_result 保持既有 envelope
 ```
 
-历史工具不接受客户端传入的任意 `workspace_root` 作为权限根。当前 MCP Runtime 的 `Workspace` 是唯一可信边界；兼容字段 `workspace_root` 存在时必须与已绑定工作区规范路径相同。
+历史工具不接受客户端传入的任意 `workspace_root` 作为权限根。当前 MCP Runtime 的 `Workspace` 是唯一可信边界；兼容字段 `workspace_root` 即使存在或过期，也不会覆盖已绑定工作区。所有历史写入仍只能落在绑定工作区下的 `docs/history-session/`（或其安全相对目录）内。
 
 ## 文件结构
 

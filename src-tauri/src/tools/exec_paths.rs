@@ -14,6 +14,9 @@ pub(super) fn resolve_workdir(
     if !path.is_absolute() {
         return workspace.resolve_existing(raw);
     }
+    if workspace.allows_external_paths() {
+        return workspace.resolve_read_path(raw);
+    }
     let resolved = path
         .canonicalize()
         .map_err(|_| WorkspaceError::not_found(format!("Path not found: {raw}")))?;

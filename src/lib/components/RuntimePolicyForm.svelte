@@ -5,6 +5,7 @@
     allowedCommands: string;
     workspaceLocalEntries: boolean;
     workspaceScriptExtensions: string;
+    allowedRoots: string[];
   }
 
   interface Props {
@@ -13,6 +14,7 @@
     allowedCommands: string;
     workspaceLocalEntries: boolean;
     workspaceScriptExtensions: string;
+    allowedRoots: string[];
     onSave: (draft: RuntimePolicyDraft) => void | Promise<void>;
   }
 
@@ -28,17 +30,18 @@
     { value: "dangerous", label: "完全放开" },
   ] as const;
 
-  let { toolProfile, permissionMode, allowedCommands, workspaceLocalEntries, workspaceScriptExtensions, onSave }: Props = $props();
+  let { toolProfile, permissionMode, allowedCommands, workspaceLocalEntries, workspaceScriptExtensions, allowedRoots, onSave }: Props = $props();
 
   let draftProfile = $state("full");
   let draftMode = $state("trusted");
   let draftCommands = $state("");
   let draftLocalEntries = $state(true);
   let draftExtensions = $state(".exe,.bat,.cmd,.ps1");
+  let draftAllowedRoots = $state("");
   let saving = $state(false);
 
   const dirty = $derived(
-    draftProfile !== toolProfile || draftMode !== permissionMode || draftCommands !== allowedCommands || draftLocalEntries !== workspaceLocalEntries || draftExtensions !== workspaceScriptExtensions,
+    draftProfile !== toolProfile || draftMode !== permissionMode || draftCommands !== allowedCommands || draftLocalEntries !== workspaceLocalEntries || draftExtensions !== workspaceScriptExtensions || draftAllowedRoots !== allowedRoots.join("\n"),
   );
 
   $effect(() => {
@@ -47,13 +50,14 @@
     draftCommands = allowedCommands;
     draftLocalEntries = workspaceLocalEntries;
     draftExtensions = workspaceScriptExtensions;
+    draftAllowedRoots = allowedRoots.join("\n");
   });
 
   async function save() {
     if (saving || !dirty) return;
     saving = true;
     try {
-      await onSave({ toolProfile: draftProfile, permissionMode: draftMode, allowedCommands: draftCommands.trim(), workspaceLocalEntries: draftLocalEntries, workspaceScriptExtensions: draftExtensions.trim() });
+      await onSave({ toolProfile: draftProfile, permissionMode: draftMode, allowedCommands: draftCommands.trim(), workspaceLocalEntries: draftLocalEntries, workspaceScriptExtensions: draftExtensions.trim(), allowedRoots: draftAllowedRoots.split("\n").map((path) => path.trim()).filter(Boolean) });
     } finally {
       saving = false;
     }
@@ -77,6 +81,11 @@
         <option value={option.value}>{option.label}</option>
       {/each}
     </select>
+  </label>
+  <label class="grid gap-1">
+    <span class="text-xs text-[var(--color-text-muted)]">额外只读目录（每行一个绝对路径）</span>
+    <textarea class="min-h-20 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 font-mono text-sm" placeholder="/Users/robot/Documents/量化_本地大目录_20261003/data" bind:value={draftAllowedRoots}></textarea>
+    <span class="text-xs text-[var(--color-text-muted)]">仅允许读取及解析工作区内指向这些目录的符号链接，写入边界不变。</span>
   </label>
   <label class="grid gap-1">
     <span class="text-xs text-[var(--color-text-muted)]">系统命令（逗号分隔）</span>

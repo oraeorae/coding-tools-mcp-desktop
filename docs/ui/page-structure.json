@@ -1,0 +1,60 @@
+{
+  "feature": "daily-research-dashboard",
+  "selectedPattern": "signal-workbench-with-list-inspector",
+  "selectionReason": "每日研究需要先按日期识别主题与待复核项，再连续查看每个主题的结论和证据；Signal Workbench 提供日期和异常层级，List + Inspector 提供最短的证据钻取路径。",
+  "rejected": [
+    {
+      "pattern": "detail-decision-page",
+      "reason": "过度聚焦单一主题，不利于扫描一天的多个研究主题。"
+    },
+    {
+      "pattern": "pure-list-inspector",
+      "reason": "缺少每日范围、证据覆盖和待复核状态的首屏提示。"
+    }
+  ],
+  "regions": [
+    {
+      "name": "day-toolbar",
+      "purpose": "日期前后切换、刷新、显示当天主题与证据数量"
+    },
+    {
+      "name": "topic-list",
+      "purpose": "扫描当天研究主题、结论状态和证据覆盖"
+    },
+    {
+      "name": "evidence-inspector",
+      "purpose": "展示选中主题的结论、发现、测试、运行状态、文件和待复核项"
+    },
+    {
+      "name": "source-footer",
+      "purpose": "显示原始 Markdown 路径和记录时间，明确只读来源"
+    }
+  ],
+  "flow": [
+    "选择日期",
+    "扫描主题与状态",
+    "选择主题",
+    "阅读结论",
+    "核对证据和限制",
+    "定位原始记录"
+  ],
+  "responsive": {
+    "desktop": "主题列表和证据检查器按 38/62 并列；日期工具栏保持同屏。",
+    "tablet": "主题列表在上，检查器在下；保持选中状态。",
+    "mobile": "单列顺序为日期、当天概览、主题列表、选中主题证据；隐藏非必要元数据，不出现横向滚动。"
+  },
+  "states": [
+    "loading",
+    "ready",
+    "empty-history",
+    "empty-day",
+    "read-error"
+  ],
+  "avoid": [
+    "统计卡片瀑布",
+    "装饰性图表",
+    "只靠颜色表达状态",
+    "将静态发现标为已验证",
+    "隐藏原始证据位置"
+  ]
+}

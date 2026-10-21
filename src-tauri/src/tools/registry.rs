@@ -232,7 +232,7 @@ pub const P0_TOOLS: &[(&str, &str, &str, bool, bool, bool)] = &[
     (
         "exec_command",
         "Execute command",
-        "Run a bounded command in the workspace under runtime policy.",
+        "Run a bounded command in the workspace under runtime policy. The response may report status=running when the yield window expires; continue with write_stdin using the returned session_id (chars empty) or read_output using output_refs until the process exits. This is not by itself a path or command failure.",
         false,
         true,
         true,
@@ -797,7 +797,7 @@ pub fn input_schema(name: &str) -> Value {
                 "workdir": { "type": "string", "default": ".", "description": "Relative to the workspace or an absolute directory inside it. External paths and parent traversal are rejected." },
                 "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 600000, "default": 30000 },
                 "max_output_bytes": { "type": "integer", "minimum": 1024, "maximum": 1048576, "default": 65536 },
-                "yield_time_ms": { "type": "integer", "minimum": 0, "maximum": 30000, "default": 1000 },
+                "yield_time_ms": { "type": "integer", "minimum": 0, "maximum": 30000, "default": 5000 },
                 "tty": { "type": "boolean", "default": false },
                 "stdin": { "type": "string", "default": "" },
                 "confirm": { "type": "boolean", "default": false },

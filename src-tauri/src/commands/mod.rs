@@ -6,9 +6,11 @@ mod audit;
 mod frp_profiles;
 mod health;
 mod logs;
+mod research;
 pub(crate) mod runtime;
 mod secrets;
 mod software;
+mod startup_restore;
 mod tunnel;
 pub(crate) mod ui_memory;
 pub(crate) mod window_chrome;
@@ -28,6 +30,7 @@ pub use frp_profiles::{
 };
 pub use health::run_health_checks;
 pub use logs::{clear_request_errors, read_request_errors, read_workspace_logs};
+pub use research::read_research_history;
 pub use runtime::{
     get_actions_runtime_status, get_runtime_status, restart_actions_runtime, restart_runtime,
     start_actions_runtime, start_runtime, stop_actions_runtime, stop_runtime,
@@ -40,6 +43,7 @@ pub use software::{
     get_download_config, install_software, list_software, set_download_config,
     uninstall_software,
 };
+pub use startup_restore::{get_startup_restore_enabled, set_startup_restore_enabled};
 pub use tunnel::{get_frp_snippet, restart_tunnel, start_tunnel, stop_tunnel, test_tunnel};
 pub use workspace::{
     create_workspace, delete_workspace, discover_upstream_tools, list_workspaces,

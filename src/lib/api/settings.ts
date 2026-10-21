@@ -52,3 +52,11 @@ export async function getProxy(): Promise<ProxyConfigDto> {
 export async function setProxy(proxy: ProxyConfigDto): Promise<void> {
   return invoke("set_proxy", { proxy });
 }
+
+export async function getStartupRestoreEnabled(): Promise<boolean> {
+  return invoke<boolean>("get_startup_restore_enabled");
+}
+
+export async function setStartupRestoreEnabled(enabled: boolean): Promise<void> {
+  return invoke("set_startup_restore_enabled", { enabled });
+}

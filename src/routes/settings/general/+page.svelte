@@ -2,7 +2,13 @@
   import { onMount } from "svelte";
   import { ask, message } from "@tauri-apps/plugin-dialog";
   import { ExternalLink, RefreshCw } from "@lucide/svelte";
-  import { getProxy, setProxy, type ProxyConfigDto } from "$lib/api/settings";
+  import {
+    getProxy,
+    getStartupRestoreEnabled,
+    setProxy,
+    setStartupRestoreEnabled,
+    type ProxyConfigDto,
+  } from "$lib/api/settings";
   import { checkAppUpdate, openUrl } from "$lib/api/app-info";
   import { APP_VERSION } from "$lib/app-version";
   import { RELEASES_LATEST_URL, REPO_URL } from "$lib/app-links";
@@ -17,10 +23,15 @@
   let checkingUpdate = $state(false);
   let releasingUi = $state(false);
   let memoryHint = $state<string | null>(null);
+  let startupRestoreEnabled = $state(false);
+  let savingStartupRestore = $state(false);
 
   async function refresh() {
     try {
-      proxy = await getProxy();
+      [proxy, startupRestoreEnabled] = await Promise.all([
+        getProxy(),
+        getStartupRestoreEnabled(),
+      ]);
       changed = false;
     } catch (e) {
       await message(String(e), { title: "加载失败", kind: "error" });
@@ -42,6 +53,25 @@
 
   function handleChange() {
     changed = true;
+  }
+
+  async function handleStartupRestoreToggle(enabled: boolean) {
+    if (savingStartupRestore) return;
+    const previous = startupRestoreEnabled;
+    startupRestoreEnabled = enabled;
+    savingStartupRestore = true;
+    try {
+      await setStartupRestoreEnabled(enabled);
+      showToast(
+        enabled ? "下次打开应用时会恢复退出前仍在运行的服务。" : "已关闭启动恢复。",
+        { title: "启动恢复", kind: "success" },
+      );
+    } catch (e) {
+      startupRestoreEnabled = previous;
+      await message(String(e), { title: "保存失败", kind: "error" });
+    } finally {
+      savingStartupRestore = false;
+    }
   }
 
   async function openLink(url: string, title: string) {
@@ -119,6 +149,31 @@
   </header>
 
   <div class="page-body flex flex-col gap-6">
+    <div class="tx-card p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-sm font-semibold">启动恢复</h3>
+          <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+            打开应用时，自动启动上次退出前仍在运行的 MCP 和 Actions 服务。
+          </p>
+          <p class="mt-2 text-xs text-[var(--color-text-muted)]">
+            仅恢复服务，不会自动连接浏览器；关闭后会清除已保存的服务快照。
+          </p>
+        </div>
+        <label class="inline-flex shrink-0 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            class="h-4 w-4 accent-[var(--color-accent)]"
+            checked={startupRestoreEnabled}
+            disabled={savingStartupRestore}
+            onchange={(event) =>
+              void handleStartupRestoreToggle((event.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>{savingStartupRestore ? "保存中" : startupRestoreEnabled ? "已开启" : "已关闭"}</span>
+        </label>
+      </div>
+    </div>
+
     <div class="tx-card p-4">
       <h3 class="text-sm font-semibold">关于</h3>
       <p class="mt-1 text-xs text-[var(--color-text-muted)]">

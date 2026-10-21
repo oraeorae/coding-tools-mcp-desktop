@@ -229,8 +229,16 @@ pub fn validate_command_for_workspace(
     for key in ["workdir", "cwd"] {
         if let Some(workdir) = arguments.get(key).and_then(Value::as_str) {
             let path = Path::new(workdir);
-            if path.components().any(|part| part == Component::ParentDir)
-                || (path.is_absolute() && workspace.is_none()) {
+            if path.is_absolute() {
+                let external_ok = workspace
+                    .map(|ws| resolve_workdir(ws, workdir).is_ok())
+                    .unwrap_or(false);
+                if !external_ok {
+                    return Err(PolicyError(
+                        "workdir must stay inside the configured workspace or an explicitly allowed external read root".into(),
+                    ));
+                }
+            } else if path.components().any(|part| part == Component::ParentDir) {
                 return Err(PolicyError(
                     "workdir must stay inside the configured workspace".into(),
                 ));
@@ -323,6 +331,15 @@ pub(super) fn is_allowlisted_program(policy: &PolicySettings, name: &str) -> boo
         !version.is_empty() && version.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
             && policy.allowed_commands.contains("python3")
     })
+}
+
+pub(super) fn is_basic_read_only_program(name: &str) -> bool {
+    let name = name
+        .strip_suffix(".exe")
+        .or_else(|| name.strip_suffix(".cmd"))
+        .or_else(|| name.strip_suffix(".bat"))
+        .unwrap_or(name);
+    BASIC_READ_ONLY_COMMANDS.contains(&name)
 }
 
 fn workspace_local_entry_exists(
