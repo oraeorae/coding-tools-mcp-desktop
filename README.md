@@ -9,15 +9,18 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mybolide/coding-tools-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/mybolide/coding-tools-mcp?label=Release" alt="Latest release"></a>
+  <a href="https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/oraeorae/coding-tools-mcp-desktop?label=Release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/Windows-x64-0078D4?logo=windows" alt="Windows x64">
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple" alt="macOS Apple Silicon">
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="README.en.md">English</a> · <a href="https://github.com/mybolide/coding-tools-mcp/releases/latest">下载最新版</a>
+  <a href="README.md">中文</a> · <a href="README.en.md">English</a> · <a href="https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest">下载最新版</a>
 </p>
+
+> **原始项目：** [xyTom/coding-tools-mcp](https://github.com/xyTom/coding-tools-mcp)<br>
+> 本仓库是基于原项目早期实现开发的独立 Rust + Tauri 桌面版。原项目目前仍由其作者维护，并已演进为 Python MCP 运行时；本仓库侧重桌面工作区管理、会话恢复、本机工具、安全边界和隧道集成。详细差异与版本演进见 [修改历史](CHANGELOG.md)。
 
 Coding Tools MCP 是一个 Rust + Tauri 2 桌面应用。选择项目目录并启动服务后，AI Agent 就能通过 MCP 读取文件、修改代码、运行命令和测试、查看 Git 状态，并把关键进度保存为项目内的历史会话。它更接近“AI 打开一个会记住开发进度的 IDE 工作区”；普通开发工具不要求先创建 Task，历史会话则负责在新对话中恢复上下文。
 
@@ -46,7 +49,7 @@ Coding Tools MCP 是一个 Rust + Tauri 2 桌面应用。选择项目目录并�
 
 ### 1. 安装桌面客户端
 
-打开 [Releases](https://github.com/mybolide/coding-tools-mcp/releases/latest) 并下载对应安装包：
+打开 [Releases](https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest) 并下载对应安装包：
 
 | 系统 | 安装包 |
 | --- | --- |
@@ -349,6 +352,9 @@ Windows 也可以双击 `dev-desktop.cmd`。不要只用 `npm run dev` 验证桌
 常见问题的排查步骤见 [疑难解决方案](./docs/troubleshooting.md)。
 
 ## 致谢
+
+首先感谢原作者 [xyTom](https://github.com/xyTom) 及原项目 [xyTom/coding-tools-mcp](https://github.com/xyTom/coding-tools-mcp)。本仓库保留 Apache-2.0 许可，并在其早期思路与实现基础上继续开发 Rust/Tauri 桌面版。
+
 感谢 [Linux.do](https://linux.do/) 社区对项目推广与反馈的支持。
 
 ## License

@@ -9,15 +9,18 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mybolide/coding-tools-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/mybolide/coding-tools-mcp?label=Release" alt="Latest release"></a>
+  <a href="https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/oraeorae/coding-tools-mcp-desktop?label=Release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/Windows-x64-0078D4?logo=windows" alt="Windows x64">
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple" alt="macOS Apple Silicon">
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="README.en.md">English</a> · <a href="https://github.com/mybolide/coding-tools-mcp/releases/latest">Download latest</a>
+  <a href="README.md">中文</a> · <a href="README.en.md">English</a> · <a href="https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest">Download latest</a>
 </p>
+
+> **Original project:** [xyTom/coding-tools-mcp](https://github.com/xyTom/coding-tools-mcp)<br>
+> This repository is an independent Rust + Tauri desktop edition derived from an early version of the original project. The original project remains actively maintained as a Python MCP runtime; this edition focuses on desktop workspace management, session recovery, local tools, security boundaries, and tunnel integration. See the [changelog](CHANGELOG.md) for the project history and major differences.
 
 Coding Tools MCP is a Rust + Tauri 2 desktop application. Select a project directory and start the service; an AI agent can then read files, edit code, run commands and tests, inspect Git, and preserve development progress inside the project through MCP. It behaves like an AI opening an IDE workspace that remembers where the last conversation stopped.
 
@@ -46,7 +49,7 @@ For a first connection, remember only this: **the desktop app turns the project 
 
 ### 1. Install the desktop client
 
-Open [Releases](https://github.com/mybolide/coding-tools-mcp/releases/latest) and download the package for your platform:
+Open [Releases](https://github.com/oraeorae/coding-tools-mcp-desktop/releases/latest) and download the package for your platform:
 
 | Platform | Package |
 | --- | --- |
@@ -321,6 +324,12 @@ On Windows, you can also run `dev-desktop.cmd`. Do not use `npm run dev` alone t
 | `src-tauri/src/tunnel/` | FRP / Cloudflare tunnel and process management |
 | `src/` | SvelteKit desktop UI |
 | `old/` | Python reference implementation and compatibility baseline |
+
+## Acknowledgements
+
+First and foremost, thanks to [xyTom](https://github.com/xyTom) and the original [xyTom/coding-tools-mcp](https://github.com/xyTom/coding-tools-mcp) project. This repository retains the Apache-2.0 license and continues the Rust/Tauri desktop edition from the original project's early ideas and implementation.
+
+Thanks to the [Linux.do](https://linux.do/) community for promotion and feedback.
 
 ## License
 
