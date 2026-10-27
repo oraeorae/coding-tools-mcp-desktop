@@ -24,6 +24,21 @@
 
 Coding Tools MCP is a Rust + Tauri 2 desktop application. Select a project directory and start the service; an AI agent can then read files, edit code, run commands and tests, inspect Git, and preserve development progress inside the project through MCP. It behaves like an AI opening an IDE workspace that remembers where the last conversation stopped.
 
+## What I changed from the original project
+
+The original project established the early Coding Tools MCP concept and Python implementation. I built on that foundation and developed it into a desktop workspace tool intended for daily use, rather than merely wrapping the original service with a UI. The main changes are:
+
+- **Rewritten technology stack:** rewrote the core service in Rust and built Windows/macOS desktop clients with Tauri 2 and Svelte.
+- **Multi-workspace desktop management:** save multiple projects and manage MCP, GPT Actions, ports, authentication, logs, and runtime state independently.
+- **Cross-conversation recovery:** store development progress as Markdown archives inside each project, with bounded state, checkpoints, search, and exact archive reads.
+- **Public connectivity:** manage FRP and Cloudflare tunnels from the desktop app, with OAuth, bearer-token authentication, and connection health checks.
+- **Additional local capabilities:** added a Chrome bridge, GPT Actions, PDF attachments, local MCP upstream proxying, and per-tool exposure controls.
+- **Stronger security boundaries:** workspace-scoped writes, read-only external paths by default, secure credential storage, request auditing, path validation, and bounded scans/reads.
+- **Reliability improvements:** persistent command output, service restoration, child-process cleanup, tunnel watchdogs, macOS folder-permission fixes, and cross-platform execution fixes.
+- **Release and support experience:** added installation, local upgrades, software management, runtime logs, diagnostics, and bilingual documentation.
+
+See [CHANGELOG.md](CHANGELOG.md) for the version-by-version history. Later Python v0.5 changes from the original project have not been directly merged here; the two implementations now evolve independently.
+
 ![Coding Tools MCP workspace overview](docs/images/workspace-overview.png)
 
 *One desktop app manages workspaces, MCP services, connection details, and the session-recovery prompt.*

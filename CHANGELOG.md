@@ -4,6 +4,10 @@
 
 This repository was derived from an early version of [xyTom/coding-tools-mcp](https://github.com/xyTom/coding-tools-mcp) and subsequently evolved into an independent Rust + Tauri desktop edition. This file records the major changes in this derivative project; consult the original repository for its own release history.
 
+## 改动总览
+
+相较原项目的早期 Python 实现，本仓库完成了 Rust 核心重写和 Tauri/Svelte 桌面化，并新增多工作区管理、项目内会话恢复、FRP/Cloudflare 隧道、OAuth 与 Actions、本机浏览器和 PDF 能力、本地 MCP 上游代理、审计及更严格的文件与进程边界。以下各版本条目记录这些改动的落地过程。
+
 ## Unreleased
 
 - 公开发布准备：补充原项目归属、派生关系和独立修改历史。
